@@ -128,7 +128,7 @@ modelChecks <- function(fit) {
 # RUN FUNCTIONS -----------------------------------------------------------------
 
 # Set species and models
-species = "Sardinops sagax"
+species = "Tarletonbeania crenularis"
 tradeoffs = c("base", "geo", "pheno", "both")
 #tradeoffs = c("both")
 
@@ -139,8 +139,8 @@ data <- getspeciesData(species = species, speciesRangeSubset = speciesRange) %>%
   mutate(year_scaled = scale(year), gear_factor = as.numeric(as.factor(gearGeneral)), timeblock_factor = as.numeric(timeblock)) 
 
 dependentVar = "logN1"
-shortFormula ="sst+ssh+salinity+dfs+month"
-mainFormula = "s(sst_scaled) + s(ssh_scaled) + s(salinity_scaled) +s(distance_from_shore_scaled)"
+shortFormula ="0 + sst+ssh+salinity+dfs+month"
+mainFormula = "0 + s(sst_scaled) + s(ssh_scaled) + s(salinity_scaled) +s(distance_from_shore_scaled)"
 # shortFormula ="ssh+dfs+month"
 # mainFormula = "s(ssh_scaled, basis = 'cv')+s(distance_from_shore_scaled, )"
 gearTerm = "as.factor(gearGeneral)"

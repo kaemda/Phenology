@@ -271,49 +271,49 @@ centralTendency_figures <- function(response, species, modelType) {
   pdf(paste0("Figures/",species, "/COG_month_vs_latitude_", modelType,".pdf"), width = 12, height = 12)
   print(cowplot::plot_grid(plotlist = plotlist, nrow = 4, align = "hv"))
   dev.off()
- 
+  
 } 
 #------------------------------------------------------------------------------#
 centralTendencyMultiSpecies <- function(speciesList, modelTypes) {
   
   for (s in 1:length(speciesList)) {
-  # Load prediction object for each species
-
+    # Load prediction object for each species
+    
     predictionObjectName = paste0("Results/", speciesList[s], "/Models/prediction_objects_", modelTypes[s], ".rdata")
     load(predictionObjectName)
     
-  # Calculate cog for each species; add species
-  cog <- calculateCenterOfGravity(p, speciesList[s])
-  
-  cog.all = data.frame(year = integer(), cog.lat = double(), cog.month = double(), cog.daylength = double(), avgsst = double(), avgssh = double(), avgsal = double())
-  #cog.all = data.frame(year = NA, cog.lat = NA, cog.month = NA, cog.daylength = NA, avgsst = NA, avgssh = NA, avgsal= NA)
-  #lms.all <- data.frame(y = NA, x = NA, p = NA, slope = NA, R2 = NA, species = NA) # create dataframe to hold lm results
-  lms.all <- data.frame(y = character(), x = character(), p = double(), slope = double(), R2 = double(), species = character()) # create dataframe to hold lm results
-  
-  # Linear regressions between central tendency (lat and month) and environmental variables
-  xaxes = c("avgsst", "avgssh", "avgsal")
-  yaxes = c("cog.lat", "cog.month")
-  xaxislabels = c("Average sea surface \n temperature [\u00b0C]", "Average sea\nsurface height [m]", "Average salinity [ppt]")
-  yaxislabels = c("Center of gravity:\nlatitude [\u00b0]", "Center of gravity:\nmonth")
-  colnames = c("y", "x", "p", "slope", "R2")
-  lms <- as.data.frame(matrix(ncol = 6, nrow = length(xaxes)*length(yaxes)))
-  colnames(lms) = colnames
-  index = 1
-  for (j in 1:length(xaxes)) {
-    for (i in 1:length(yaxes)) {
-      lm <- lm(data = cog, formula = as.formula(paste0(yaxes[j], "~", xaxes[i]))) %>% summary()
-      lms$y[index] = yaxes[j]
-      lms$x[index] = xaxes[i]
-      lms$p[index] = lm$coefficients[8]
-      lms$slope[index] = lm$coefficients[2]
-      lms$r2[index] = lm$adj.r.squared
-      lms$species[index] = speciesList[s]
-      index = index+1
-    }
-  } 
-  # Row-bind cog datasets
-  cog.all <- bind_rows(cog.all, cog)
-  lms.all <- bind_rows(lms.all, lms)
+    # Calculate cog for each species; add species
+    cog <- calculateCenterOfGravity(p, speciesList[s])
+    
+    cog.all = data.frame(year = integer(), cog.lat = double(), cog.month = double(), cog.daylength = double(), avgsst = double(), avgssh = double(), avgsal = double())
+    #cog.all = data.frame(year = NA, cog.lat = NA, cog.month = NA, cog.daylength = NA, avgsst = NA, avgssh = NA, avgsal= NA)
+    #lms.all <- data.frame(y = NA, x = NA, p = NA, slope = NA, R2 = NA, species = NA) # create dataframe to hold lm results
+    lms.all <- data.frame(y = character(), x = character(), p = double(), slope = double(), R2 = double(), species = character()) # create dataframe to hold lm results
+    
+    # Linear regressions between central tendency (lat and month) and environmental variables
+    xaxes = c("avgsst", "avgssh", "avgsal")
+    yaxes = c("cog.lat", "cog.month")
+    xaxislabels = c("Average sea surface \n temperature [\u00b0C]", "Average sea\nsurface height [m]", "Average salinity [ppt]")
+    yaxislabels = c("Center of gravity:\nlatitude [\u00b0]", "Center of gravity:\nmonth")
+    colnames = c("y", "x", "p", "slope", "R2")
+    lms <- as.data.frame(matrix(ncol = 6, nrow = length(xaxes)*length(yaxes)))
+    colnames(lms) = colnames
+    index = 1
+    for (i in 1:length(xaxes)) {
+      for (j in 1:length(yaxes)) {
+        lm <- lm(data = cog, formula = as.formula(paste0(yaxes[j], "~", xaxes[i]))) %>% summary()
+        lms$y[index] = yaxes[j]
+        lms$x[index] = xaxes[i]
+        lms$p[index] = lm$coefficients[8]
+        lms$slope[index] = lm$coefficients[2]
+        lms$r2[index] = lm$adj.r.squared
+        lms$species[index] = speciesList[s]
+        index = index+1
+      }
+    } 
+    # Row-bind cog datasets
+    cog.all <- bind_rows(cog.all, cog)
+    lms.all <- bind_rows(lms.all, lms)
   }
   
   # Remove first blank row
@@ -340,7 +340,7 @@ centralTendencyMultiSpecies <- function(speciesList, modelTypes) {
                                    scale_fill_manual(values = c("tan3", "skyblue2","navy")) +
                                    scale_color_manual(values = c("tan3", "skyblue2","navy")) +
                                    theme(legend.position = "none") +
-                                  labs(x = xaxislabels[i], y = yaxislabels[j]))
+                                   labs(x = xaxislabels[i], y = yaxislabels[j]))
       index = index + 1
     }
   }
@@ -588,7 +588,7 @@ regionlinearRegressions <- function(species, formula) {
 envPosterior <- function() {
   
   data_fit <- tidy(fit,"fixed",conf.int = TRUE) %>% subset(term != '(Intercept)')
-
+  
   pdf(paste0("Figures/",species, "/EnvCovariate_Posteriors_", modelType,".pdf"), width = 5, height = 6)
   print(ggplot(data_fit) +
           aes(x = estimate, y = term) +
@@ -832,34 +832,34 @@ leadingTrailing <- function(species) {
   for (i in 1:length(timeblocks)) {
     
     p.subset <- subset(p, timeblock == timeblocks[i] & est_retransform > 0.001)
-  # Calculate where 10% of the abundance is
-  totalAbundance = sum(p.subset$est_retransform)
-  tenPercentLead = totalAbundance * 0.1
-  tenPercentTrail = totalAbundance - (totalAbundance * 0.1)
-  p.ordered = p.subset[order(p.subset$latitude, decreasing = T),]
-  cumulative = as.data.frame(cumsum(p.ordered$est_retransform))
-  
-  # Find indexes of the 10% low and high cumulative abundance
-  lead.index <- which(cumulative$`cumsum(p.ordered$est_retransform)` >= tenPercentLead, arr.ind=TRUE)[1]
-  trail.index <- which(cumulative$`cumsum(p.ordered$est_retransform)` >= tenPercentTrail, arr.ind=TRUE)[1]
-  
-  # Get latitudes for 10% low and high abundances
-  lead.lat = p.ordered$latitude[lead.index]
-  trail.lat = p.ordered$latitude[trail.index]
-  
-  quartiles$lead.lat[i] = lead.lat
-  quartiles$trail.lat[i] = trail.lat
-  quartiles$max.lat[i] = max(p.subset$latitude)
-  quartiles$min.lat[i] = min(p.subset$latitude)
-  
+    # Calculate where 10% of the abundance is
+    totalAbundance = sum(p.subset$est_retransform)
+    tenPercentLead = totalAbundance * 0.1
+    tenPercentTrail = totalAbundance - (totalAbundance * 0.1)
+    p.ordered = p.subset[order(p.subset$latitude, decreasing = T),]
+    cumulative = as.data.frame(cumsum(p.ordered$est_retransform))
+    
+    # Find indexes of the 10% low and high cumulative abundance
+    lead.index <- which(cumulative$`cumsum(p.ordered$est_retransform)` >= tenPercentLead, arr.ind=TRUE)[1]
+    trail.index <- which(cumulative$`cumsum(p.ordered$est_retransform)` >= tenPercentTrail, arr.ind=TRUE)[1]
+    
+    # Get latitudes for 10% low and high abundances
+    lead.lat = p.ordered$latitude[lead.index]
+    trail.lat = p.ordered$latitude[trail.index]
+    
+    quartiles$lead.lat[i] = lead.lat
+    quartiles$trail.lat[i] = trail.lat
+    quartiles$max.lat[i] = max(p.subset$latitude)
+    quartiles$min.lat[i] = min(p.subset$latitude)
+    
   }
   
   print(ggplot(quartiles) +
-    geom_linerange(aes(ymin = min.lat, ymax = max.lat, x= timeblock), linewidth = 5, col = "lightblue") +
-    geom_linerange(aes(ymin = trail.lat, ymax = lead.lat, x= timeblock), linewidth = 5) +
-    geom_hline(yintercept =  max(p$latitude), lty = 2) +
-    geom_hline(yintercept =  min(p$latitude), lty = 2)) 
-    
+          geom_linerange(aes(ymin = min.lat, ymax = max.lat, x= timeblock), linewidth = 5, col = "lightblue") +
+          geom_linerange(aes(ymin = trail.lat, ymax = lead.lat, x= timeblock), linewidth = 5) +
+          geom_hline(yintercept =  max(p$latitude), lty = 2) +
+          geom_hline(yintercept =  min(p$latitude), lty = 2)) 
+  
   # Calculate top 10% and bottom 10% of range
   maxLat = max(p$latitude) 
   minLat = min(p$latitude)
@@ -898,9 +898,9 @@ leadingTrailing <- function(species) {
   
   rangePercentiles = c("upper10", "middle80", "lower10")
   for (i in 1:3) {
-  dat <- subset(observedExpected, rangePercentile == rangePercentiles[i])
-  print(chisq.test(dat$expected, dat$observed))
-  
+    dat <- subset(observedExpected, rangePercentile == rangePercentiles[i])
+    print(chisq.test(dat$expected, dat$observed))
+    
   }
   
   observedExpected.edges <- subset(observedExpected, rangePercentile != "middle80")
@@ -951,194 +951,202 @@ modelTypes = c("logN1_speciesRange_allPrograms_geo_sst+ssh+salinity+dfs+month_as
 speciesList = c("Tarletonbeania crenularis", "Triphoturus mexicanus", "Stenobrachius leucopsarus")
 
 # Mixed taxonomic models
-modelTypes = c("logN1_speciesRange_allPrograms_pheno_sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_geo_sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_geo_sst+ssh+salinity+dfs+month_as.factor(gearGeneral)")
+modelTypes = c("logN1_speciesRange_allPrograms_pheno_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
+               "logN1_speciesRange_allPrograms_geo_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
+               "logN1_speciesRange_allPrograms_geo_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)")
 speciesList = c("Sardinops sagax", "Tarletonbeania crenularis", "Parophrys vetulus")
 
 # Single species
 speciesList = "Sardinops sagax"
-modelTypes = c("logN1_speciesRange_allPrograms_base_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)")
+modelTypes = c("logN1_speciesRange_allPrograms_pheno + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)")
 modelTypes = c("logN1_speciesRange_allPrograms_pheno_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
                "logN1_speciesRange_allPrograms_base_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
                "logN1_speciesRange_allPrograms_both_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)")
 
 # Change these to force a new grid or new prediction
 makeNewGrid = F
-makeNewPrediction = F
+makeNewPrediction = T
 
 for(i in 1:length(speciesList)) {
   for (j in 1:length(modelTypes)) {
-  
-  species = speciesList[i]
-  modelType = modelTypes[j]
-  
-  # Load results
-  load(file = paste0("Results/", species, "/Models/", modelType, ".rdata"))
-  
-  # Get response variable
-  response = strsplit(modelType, "_")[[1]][1]
-  
-  # Get grid and prediction object filenames
-  gridFilename = paste0("Analysis/PredictionGrids/", species, "_grid.rdata")
-  predictionObjectName = paste0("Results/", species, "/Models/prediction_objects_", modelType, ".rdata")
-  
-  # If the prediction grid hasn't already been created, create it (or override)
-  if (!file.exists(gridFilename) | makeNewGrid == T) { # Load prediction grid
-    createPredictionGrid(data = data)
-  } 
-  # Then, load prediction grid and grid.df from source
-  load(gridFilename) 
-  
-  # Create a row for each gear type (these will ultimately be averaged together)
-  gearGeneral = unique(data$gearGeneral) # Get gear categories
-  prediction_grid_roms <- expand_grid(prediction_grid_roms, gearGeneral) %>% 
-    subset(., !sst_roms == 0 | !salinity_roms == 0, !ssh_roms == 0)
-  
-  # Create factored versions of year and timeblock
-  prediction_grid_roms$year_scaled = as.vector(scale(prediction_grid_roms$year, center = T, scale = T)[,1])
-  prediction_grid_roms$timeblock = factor(prediction_grid_roms$timeblock, levels = c("1995-1999", "2000-2004", "2005-2009", "2010-2014", "2015-2019"))
-  save(prediction_grid_roms, grid.df, file = paste0("Analysis/PredictionGrids/", species, "_grid.rdata"))
-  
-  if(!file.exists(predictionObjectName) | makeNewPrediction == T) {
-    # Predict on both original data and on the prediction grid -------
-    p.original <- predict(object = fit, newdata = data) %>%  
-    mutate(est_retransform = fit$family$linkinv(est)) %>% 
-      group_by_at(c("latitude", "longitude", "X", "Y", "year", "month", "timeblock", "sst_roms", "ssh_roms", "salinity_roms")) %>% 
-      summarize(est_retransform = sum(est_retransform), logN1 = sum(logN1))
     
-    # Predict on full grid
-    p.obj <- predict(object = fit, newdata = prediction_grid_roms, return_tmb_object = T)
-    p <- predict(object = fit, newdata = prediction_grid_roms) %>% 
-      mutate(towID = paste(latitude, longitude, year, month, sep = "_")) %>% 
-      mutate(est_retransform = fit$family$linkinv(est)) %>% 
-      group_by_at(c("towID", "gridid", "region", "latitude", "longitude", "X", "Y", "year", "month", "timeblock", "sst_roms", "ssh_roms", "salinity_roms", "daylength")) %>% 
-      summarize(est_retransform = sum(est_retransform), est_rf = mean(est_rf), est_non_rf = mean(est_non_rf)) # sum for est and average for other effects across the three gear types
-
-    # Get unique gridid for each grid point using lat/lon combination
-    p$latlon <- paste(p$longitude, p$latitude) 
-    save(p, p.obj, p.original, file = predictionObjectName)
-  } else { # Otherwise, load existing prediction object
-    load(predictionObjectName)
-  }
-  
-  # CT dataframes ------------
-  # Summarize catch data by grid point, month, year, region, timeblock
-  predictedCatch.grid <- p %>% group_by_at(., c("region", "gridid", "month", "year", "timeblock", "sst_roms", "latitude", "longitude","X", "Y", "salinity_roms", "ssh_roms")) %>%
-    dplyr::summarize(., mean_est = mean(est_retransform)) %>% # summarize across grid cells
-    mutate(., est_x_month = mean_est * month) %>% 
-    mutate(., timeblock = factor(timeblock, levels = c("1995-1999", "2000-2004", "2005-2009", "2010-2014", "2015-2019"))) %>% 
-    mutate(., region = factor(region, levels = c("Gulf of Alaska", "British Columbia", "OR/WA", "Central CCE", "Southern CCE")))
-  
-  if("epsilon_st" %in% colnames(p)) { # Spatial models
-    # Summarize catch data by grid point, month, timeblock
-    predictedCatch.grid.timeblock <- p %>% group_by_at(., c("gridid", "timeblock",  "latitude", "longitude","X", "Y")) %>%
-      summarize(.,
-                mean_est = mean(est_retransform),
-                mean_rf = mean(fit$family$linkinv(est_rf)),
-                mean_epsilon_st = mean(fit$family$linkinv(epsilon_st)),
-                mean_fixed = mean(fit$family$linkinv(est_non_rf)),
-                mean_sst = mean(sst_roms),
-                mean_salinity = mean(salinity_roms),
-                mean_ssh = mean(ssh_roms)
-      ) %>%
-      mutate(., timeblock = factor(timeblock, levels = c("1995-1999", "2000-2004", "2005-2009", "2010-2014", "2015-2019")))
+    species = speciesList[i]
+    modelType = modelTypes[j]
     
-    # Summarize catch data by latitude, month, timeblock
-    predictedCatch.lat.timeblock <- p %>% group_by_at(., c("latitude", "timeblock" )) %>% 
-      summarize(.,
-                mean_est = mean(est_retransform),
-                mean_rf = mean(fit$family$linkinv(est_rf)),
-                mean_fixed = mean(fit$family$linkinv(est_non_rf)),
-                mean_sst = mean(sst_roms),
-                mean_salinity = mean(salinity_roms),
-                mean_ssh = mean(ssh_roms)
-      )
+    # Load results
+    load(file = paste0("Results/", species, "/Models/", modelType, ".rdata"))
+    
+    # Get response variable
+    response = strsplit(modelType, "_")[[1]][1]
+    
+    # Get grid and prediction object filenames
+    gridFilename = paste0("Analysis/PredictionGrids/", species, "_grid.rdata")
+    predictionObjectName = paste0("Results/", species, "/Models/prediction_objects_", modelType, ".rdata")
+    
+    # If the prediction grid hasn't already been created, create it (or override)
+    if (!file.exists(gridFilename) | makeNewGrid == T) { # Load prediction grid
+      createPredictionGrid(data = data)
+      
+      # Create a row for each gear type (these will ultimately be averaged together)
+      gearGeneral = unique(data$gearGeneral) # Get gear categories
+      prediction_grid_roms <- expand_grid(prediction_grid_roms, gearGeneral) %>% 
+        subset(., !sst_roms == 0 | !salinity_roms == 0, !ssh_roms == 0)
+      
+      # Create factored versions of year and timeblock
+      prediction_grid_roms$year_scaled = as.vector(scale(prediction_grid_roms$year, center = T, scale = T)[,1])
+      prediction_grid_roms$timeblock = factor(prediction_grid_roms$timeblock, levels = c("1995-1999", "2000-2004", "2005-2009", "2010-2014", "2015-2019"))
+      save(prediction_grid_roms, grid.df, file = paste0("Analysis/PredictionGrids/", species, "_grid.rdata"))
+      
+    } 
+    # Then, load prediction grid and grid.df from source
+    load(gridFilename) 
+    
+    if(!file.exists(predictionObjectName) | makeNewPrediction == T) {
+      # Predict on both original data and on the prediction grid -------
+      p.original <- predict(object = fit, newdata = data) %>%  
+        mutate(est_retransform = fit$family$linkinv(est)) %>% 
+        group_by_at(c("latitude", "longitude", "X", "Y", "year", "month", "timeblock", "sst_roms", "ssh_roms", "salinity_roms")) %>% 
+        summarize(est_retransform = sum(est_retransform), logN1 = sum(logN1))
+      
+      # Predict on full grid
+      p.obj <- predict(object = fit, newdata = prediction_grid_roms, return_tmb_object = T)
+      p <- predict(object = fit, newdata = prediction_grid_roms) %>% 
+        mutate(towID = paste(latitude, longitude, year, month, sep = "_")) %>% 
+        mutate(est_retransform = fit$family$linkinv(est)) %>% 
+        group_by_at(c("towID", "gridid", "region", "latitude", "longitude", "X", "Y", "year", "month", "timeblock", "sst_roms", "ssh_roms", "salinity_roms", "daylength")) %>% 
+        summarize(est_retransform = sum(est_retransform), est_rf = mean(est_rf), est_non_rf = mean(est_non_rf)) # sum for est and average for other effects across the three gear types
+      
+      # Get unique gridid for each grid point using lat/lon combination
+      p$latlon <- paste(p$longitude, p$latitude) 
+      save(p, p.obj, p.original, file = predictionObjectName)
+    } else { # Otherwise, load existing prediction object
+      load(predictionObjectName)
+    }
+    
+    # CT dataframes ------------
+    # Summarize catch data by grid point, month, year, region, timeblock
+    predictedCatch.grid <- p %>% group_by_at(., c("region", "gridid", "month", "year", "timeblock", "sst_roms", "latitude", "longitude","X", "Y", "salinity_roms", "ssh_roms")) %>%
+      dplyr::summarize(., mean_est = mean(est_retransform)) %>% # summarize across grid cells
+      mutate(., est_x_month = mean_est * month) %>% 
+      mutate(., timeblock = factor(timeblock, levels = c("1995-1999", "2000-2004", "2005-2009", "2010-2014", "2015-2019"))) %>% 
+      mutate(., region = factor(region, levels = c("Gulf of Alaska", "British Columbia", "OR/WA", "Central CCE", "Southern CCE")))
+    
+    if("epsilon_st" %in% colnames(p)) { # Spatial models
+      # Summarize catch data by grid point, month, timeblock
+      predictedCatch.grid.timeblock <- p %>% group_by_at(., c("gridid", "timeblock",  "latitude", "longitude","X", "Y")) %>%
+        summarize(.,
+                  mean_est = mean(est_retransform),
+                  mean_rf = mean(fit$family$linkinv(est_rf)),
+                  mean_epsilon_st = mean(fit$family$linkinv(epsilon_st)),
+                  mean_fixed = mean(fit$family$linkinv(est_non_rf)),
+                  mean_sst = mean(sst_roms),
+                  mean_salinity = mean(salinity_roms),
+                  mean_ssh = mean(ssh_roms)
+        ) %>%
+        mutate(., timeblock = factor(timeblock, levels = c("1995-1999", "2000-2004", "2005-2009", "2010-2014", "2015-2019")))
+      
+      # Summarize catch data by latitude, month, timeblock
+      predictedCatch.lat.timeblock <- p %>% group_by_at(., c("latitude", "timeblock" )) %>% 
+        summarize(.,
+                  mean_est = mean(est_retransform),
+                  mean_rf = mean(fit$family$linkinv(est_rf)),
+                  mean_fixed = mean(fit$family$linkinv(est_non_rf)),
+                  mean_sst = mean(sst_roms),
+                  mean_salinity = mean(salinity_roms),
+                  mean_ssh = mean(ssh_roms)
+        )
     } else {
-    predictedCatch.grid.timeblock <- p %>% group_by_at(., c("gridid", "timeblock", "latitude", "longitude","X", "Y")) %>%
-      summarize(.,
-                mean_est = mean(est_retransform),
-                mean_rf = mean(fit$family$linkinv(est_rf)),
-                mean_fixed = mean(fit$family$linkinv(est_non_rf)),
-                mean_sst = mean(sst_roms),
-                mean_salinity = mean(salinity_roms),
-                mean_ssh = mean(ssh_roms)
-      )
-    # Summarize catch data by latitude, month, timeblock
-    predictedCatch.lat.timeblock <- p %>% group_by_at(., c("latitude", "timeblock")) %>% 
-      summarize(.,
-                mean_est = mean(est_retransform),
-                mean_rf = mean(fit$family$linkinv(est_rf)),
-                mean_fixed = mean(fit$family$linkinv(est_non_rf)),
-                mean_sst = mean(sst_roms),
-                mean_salinity = mean(salinity_roms),
-                mean_ssh = mean(ssh_roms)
-      )
-  }
-  # calculate central tendency for each grid cell (month # * mean abundance in month)/(sum of mean abundances across all months)
-  centralTendency.grid <- group_by_at(predictedCatch.grid, c("gridid","latitude", "longitude", "X", "Y")) %>% 
-    summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
-  
-  # Calculate central tendency for each grid point per timeblock
-  centralTendency.grid.timeblock <- group_by_at(predictedCatch.grid, c("gridid","timeblock", "latitude", "longitude", "X", "Y")) %>% 
-    summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
-  
-  # Calculate central tendency for each grid point per year
-  centralTendency.grid.year <- group_by_at(predictedCatch.grid, c("gridid","year",  "latitude", "longitude", "X", "Y")) %>% 
-    summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
-  
-  # Calculate central tendency for each region per timeblock
-  centralTendency.region.timeblock <- group_by_at(predictedCatch.grid, c("region", "timeblock")) %>% 
-    summarize(mean_est_region = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
-  
-  # Calculate central tendency for each region per year
-  centralTendency.region.year <- group_by_at(predictedCatch.grid, c("region", "year")) %>% 
-    summarize(mean_est_region = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
-  
-  # Linear regressions -----
-  regressionResults <- regionlinearRegressions(species = species, formula = as.character(fit$formula))
-  grid.df <- pointlinearRegressions(species = species)
-  grid.df$days = grid.df$cog_slope*(365/12) # convert to days
-  write.xlsx(regressionResults, file = paste0("Results/", species, "/Regressions/", modelType, "_linearRegressionResults.xlsx"))
-  
-  # Frequency of sampling for species----
-  #frequencyOfSampling(speciesData = data)
-  
-  # Predictive performance -----
-  predictivePerformance(fit, response)
-  
-  # Env tracking figures----
-  #envTracking_figures(species = species, modelType = modelType)
-  #envVariance_figures(species = species, modelType = modelType)
-  
-  # Env posterior figures----
-  envPosterior()
-  
-  # Effects figures -----
-  effectsFigures(species, modelType = modelType)
-  
-  # CT figures -------
-  centralTendency_figures(response = response, species = species, modelType = modelType)
-  
-  # Empirical data ---------
-  empiricalCatch.timeblock <- data %>%
-    group_by_at(c("latitude", "longitude", "X", "Y", "year", "month", "timeblock")) %>%
-    summarize(logN1 = sum(logN1)) %>% # sum across the three gear types
-    ungroup() %>% group_by_at(c("X", "Y", "timeblock")) %>%
-    summarize(logN1 = mean(logN1))
-  empiricalData(response = response, species = species)
+      predictedCatch.grid.timeblock <- p %>% group_by_at(., c("gridid", "timeblock", "latitude", "longitude","X", "Y")) %>%
+        summarize(.,
+                  mean_est = mean(est_retransform),
+                  mean_rf = mean(fit$family$linkinv(est_rf)),
+                  mean_fixed = mean(fit$family$linkinv(est_non_rf)),
+                  mean_sst = mean(sst_roms),
+                  mean_salinity = mean(salinity_roms),
+                  mean_ssh = mean(ssh_roms)
+        )
+      # Summarize catch data by latitude, month, timeblock
+      predictedCatch.lat.timeblock <- p %>% group_by_at(., c("latitude", "timeblock")) %>% 
+        summarize(.,
+                  mean_est = mean(est_retransform),
+                  mean_rf = mean(fit$family$linkinv(est_rf)),
+                  mean_fixed = mean(fit$family$linkinv(est_non_rf)),
+                  mean_sst = mean(sst_roms),
+                  mean_salinity = mean(salinity_roms),
+                  mean_ssh = mean(ssh_roms)
+        )
+    }
+    # calculate central tendency for each grid cell (month # * mean abundance in month)/(sum of mean abundances across all months)
+    centralTendency.grid <- group_by_at(predictedCatch.grid, c("gridid","latitude", "longitude", "X", "Y")) %>% 
+      summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
+    
+    # Calculate central tendency for each grid point per timeblock
+    centralTendency.grid.timeblock <- group_by_at(predictedCatch.grid, c("gridid","timeblock", "latitude", "longitude", "X", "Y")) %>% 
+      summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
+    
+    # Calculate central tendency for each grid point per year
+    centralTendency.grid.year <- group_by_at(predictedCatch.grid, c("gridid","year",  "latitude", "longitude", "X", "Y")) %>% 
+      summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
+    
+    # Calculate central tendency for each region per timeblock
+    centralTendency.region.timeblock <- group_by_at(predictedCatch.grid, c("region", "timeblock")) %>% 
+      summarize(mean_est_region = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
+    
+    # Calculate central tendency for each region per year
+    centralTendency.region.year <- group_by_at(predictedCatch.grid, c("region", "year")) %>% 
+      summarize(mean_est_region = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
+    
+    # Linear regressions -----
+    regressionResults <- regionlinearRegressions(species = species, formula = as.character(fit$formula))
+    grid.df <- pointlinearRegressions(species = species)
+    grid.df$days = grid.df$cog_slope*(365/12) # convert to days
+    write.xlsx(regressionResults, file = paste0("Results/", species, "/Regressions/", modelType, "_linearRegressionResults.xlsx"))
+    
+    # Frequency of sampling for species----
+    #frequencyOfSampling(speciesData = data)
+    
+    # Predictive performance -----
+    predictivePerformance(fit, response)
+    
+    # Env tracking figures----
+    #envTracking_figures(species = species, modelType = modelType)
+    #envVariance_figures(species = species, modelType = modelType)
+    
+    # Env posterior figures----
+    envPosterior()
+    
+    # Effects figures -----
+    effectsFigures(species, modelType = modelType)
+    
+    # CT figures -------
+    centralTendency_figures(response = response, species = species, modelType = modelType)
+    
+    # Empirical data ---------
+    empiricalCatch.timeblock <- data %>%
+      group_by_at(c("latitude", "longitude", "X", "Y", "year", "month", "timeblock")) %>%
+      summarize(logN1 = sum(logN1)) %>% # sum across the three gear types
+      ungroup() %>% group_by_at(c("X", "Y", "timeblock")) %>%
+      summarize(logN1 = mean(logN1))
+    empiricalData(response = response, species = species)
     # Predicted catch or presence --------
-  predictedData(response = response, species = species, modelType = modelType)
-  
-  #Quotient curves----------
-  quotientCurves()
-  
-  #Leading and trailing -------
-  leadingTrailing(species)
-  
+    predictedData(response = response, species = species, modelType = modelType)
+    
+    #Quotient curves----------
+    quotientCurves()
+    
+    #Leading and trailing -------
+    leadingTrailing(species)
+    
+  }
 }
-}
-# Central tendency (multi-species plot)
+
+# Central tendency (multi-species plot) --------------
+# Mixed taxonomic models
+modelTypes = c("logN1_speciesRange_allPrograms_pheno_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
+               "logN1_speciesRange_allPrograms_geo_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
+               "logN1_speciesRange_allPrograms_geo_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)")
+speciesList = c("Sardinops sagax", "Tarletonbeania crenularis", "Parophrys vetulus")
+
 centralTendencyMultiSpecies(speciesList, modelTypes)
 
 # Test for quadratic relationship between estimated abundance and environmental covariates
@@ -1216,29 +1224,29 @@ variables = c("sst_roms", "ssh_roms", "salinity_roms")
 variables = c("latitude")
 
 for (i in 1:length(variables)) {
-
+  
   # Weight environmental covariates by biomass
-weighted_var <- p %>% 
-  group_by(year) %>% 
-  reframe("Median" = hutils::weighted_quantile(v = .data[[variables[i]]], w = est_retransform, p = 0.5),
+  weighted_var <- p %>% 
+    group_by(year) %>% 
+    reframe("Median" = hutils::weighted_quantile(v = .data[[variables[i]]], w = est_retransform, p = 0.5),
             "1st" = hutils::weighted_quantile(v = .data[[variables[i]]], w = est_retransform, p = 0.25),
             "3rd" = hutils::weighted_quantile(v = .data[[variables[i]]], w = est_retransform, p = 0.75)) %>% 
-  pivot_longer(cols = c("Median", "1st", "3rd"),
-               names_to = "series", values_to = "var") %>% 
-  group_by(series) %>% 
-  mutate(var_centered = var - mean(var)) %>% 
-  ungroup()
-
-print(ggplot(weighted_var, aes(year, var, color = series, group = series, fill = series)) +
-  stat_smooth(method = "gam", formula = y ~ s(x, k = 4), se = FALSE, size = 0.8) +
-  geom_point(size = 1.3, alpha = 0.8) +
-  #scale_color_manual(values = pal, name = "Quantiles") +
-  #scale_fill_manual(values = pal) +
-  guides(fill = "none", color = "none") +
-  labs(x = "Year", color = "") +
-  scale_y_reverse() + 
-  theme_classic(base_size = 11) +
-  theme(plot.margin = unit(c(0.9, 0, 0, 0), "cm")))
+    pivot_longer(cols = c("Median", "1st", "3rd"),
+                 names_to = "series", values_to = "var") %>% 
+    group_by(series) %>% 
+    mutate(var_centered = var - mean(var)) %>% 
+    ungroup()
+  
+  print(ggplot(weighted_var, aes(year, var, color = series, group = series, fill = series)) +
+          stat_smooth(method = "gam", formula = y ~ s(x, k = 4), se = FALSE, size = 0.8) +
+          geom_point(size = 1.3, alpha = 0.8) +
+          #scale_color_manual(values = pal, name = "Quantiles") +
+          #scale_fill_manual(values = pal) +
+          guides(fill = "none", color = "none") +
+          labs(x = "Year", color = "") +
+          scale_y_reverse() + 
+          theme_classic(base_size = 11) +
+          theme(plot.margin = unit(c(0.9, 0, 0, 0), "cm")))
 }
 
 pdf(file = "Figures/regions.pdf", width = 4, height = 6)
