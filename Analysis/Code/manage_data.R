@@ -19,6 +19,8 @@ library(qdap)
 # mapping and plotting
 library(sf)
 library(ggplot2)
+library(raster)
+library(marmap)
 
 setwd("C://KDale/Projects/Phenology/")
 
@@ -492,8 +494,8 @@ calcofi <- read.csv("Data/CalCOFI.csv") %>% mutate(., across("date", as.Date)) %
 rreas <- read.csv("Data/RREAS.csv") %>% mutate(., across("date", as.Date)) %>% mutate(., across(c("cruise", "station"), as.character))
 prerecruit <- read.csv("Data/Prerecruit_full.csv") %>% mutate(., across("date", as.Date)) %>% mutate(., across(c("line", "station"), as.character))
 nhline <- read.csv("Data/NHLine.csv") %>% mutate(., across("date", as.Date)) %>% mutate(., across("station", as.character))
-ecofoci <- read.csv("Data/ecofoci.csv") %>% mutate(., across("date", as.Date)) %>% mutate(., across("gear", as.character))
 canada <- read.csv("Data/canada.csv") %>% mutate(., across("date", as.Date))
+ecofoci <- read.csv("Data/ecofoci.csv") %>% mutate(., across("date", as.Date)) %>% mutate(., across("gear", as.character))
 
 # Load North America shapefile
 northAmerica <- st_read("C://KDale/GIS/North_South_America.shp") %>%
@@ -501,7 +503,7 @@ northAmerica <- st_read("C://KDale/GIS/North_South_America.shp") %>%
 
 ## Combine datasets, select relevant columns, add unique tow ID -----
 all_data <- bind_rows(list(imecocal, calcofi, rreas, prerecruit, nhline, canada, ecofoci)) %>%
-  select(., program, cruise, line, station, date, year, month, day, time,
+  dplyr::select(., program, cruise, line, station, date, year, month, day, time,
          day_night, gear, gearGeneral, tow_number, tow_key, latitude, longitude, scientific_name, 
          volume_sampled_m3, larvae_count, larvae_10m2, larvae_m3, larvae_1000m3, maturity,
          tow_depth_m, bottom_depth,
@@ -522,16 +524,21 @@ all_data$towID = gsub(pattern = "_NA_", replacement = "_", x = all_data$towID)
 all_data$towID = gsub(pattern = "_NA", replacement = "", x = all_data$towID)
 
 ## Get tows and select within 200nm EEZ ----
+all_tows <- getTows(all_data)
+
 ## Add ROMS data to tows --
 source("Analysis/Code/linkRoms.R")
-
-all_tows <- getTows(all_data)
 all_tows_roms <- selectWithinEEZ(all_tows) %>%
   mutate(., distance_from_shore_m = as.vector(st_distance(., northAmerica)[,1])) %>% 
   mutate(., distance_from_shore_scaled = scale(distance_from_shore_m)[,1]) %>% 
   st_drop_geometry(.) %>% 
   linkroms(.) %>% 
   mutate(daylength = geosphere::daylength(lat = latitude, doy = day_of_year)) # daylength
+
+# Get bathymetry data
+bathy <- getNOAA.bathy(lon1 = -170, lon2 = -109, lat1 = 20, lat2 = 62, resolution = 4)
+all_tows_roms$bottom_depth <- get.depth(bathy, x = all_tows_roms$longitude, y = all_tows_roms$latitude, locator = FALSE)$depth
+all_tows_roms$bottom_depth_scaled <- scale(all_tows_roms$bottom_depth)[,1]
 
 ## Select within 200nm EEZ and select only positive tows -----
 ## Create one column of catch anomalies

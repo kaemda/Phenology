@@ -108,7 +108,7 @@ modelChecks <- function(fit) {
   # Basic sanity checks
   sdmTMB::sanity(fit)
   
-  # Randomized quantile residuals - quick
+  # Randomized quantile residuals - quick check
   data$resids <- residuals(fit)
   qqnorm(data$resids)
   qqline(data$resids)
@@ -128,9 +128,9 @@ modelChecks <- function(fit) {
 # RUN FUNCTIONS -----------------------------------------------------------------
 
 # Set species and models
-species = "Tarletonbeania crenularis"
-tradeoffs = c("base", "geo", "pheno", "both")
-#tradeoffs = c("both")
+species = "Glyptocephalus zachirus"
+tradeoffs = c("both", "geo", "pheno", "base")
+tradeoffs = c("geo")
 
 # Get species data
 source("Analysis/Code/getSpeciesData.R")
@@ -139,8 +139,8 @@ data <- getspeciesData(species = species, speciesRangeSubset = speciesRange) %>%
   mutate(year_scaled = scale(year), gear_factor = as.numeric(as.factor(gearGeneral)), timeblock_factor = as.numeric(timeblock)) 
 
 dependentVar = "logN1"
-shortFormula ="0 + sst+ssh+salinity+dfs+month"
-mainFormula = "0 + s(sst_scaled) + s(ssh_scaled) + s(salinity_scaled) +s(distance_from_shore_scaled)"
+shortFormula ="sst+ssh+salinity+dfs+bd+month"
+mainFormula = "s(sst_scaled, k = 3) + s(ssh_scaled, k = 3) + s(salinity_scaled, k = 3) + s(distance_from_shore_scaled, k = 3) + s(bottom_depth_scaled, k = 3)"
 # shortFormula ="ssh+dfs+month"
 # mainFormula = "s(ssh_scaled, basis = 'cv')+s(distance_from_shore_scaled, )"
 gearTerm = "as.factor(gearGeneral)"
@@ -148,7 +148,7 @@ gearTerm = "as.factor(gearGeneral)"
 for (i in 1:length(tradeoffs)) {
   
   # Make mesh
-  mesh <- make_mesh(data, xy_cols = c("X",  "Y"), n_knots = 150, type= "cutoff_search")
+  mesh <- make_mesh(data, xy_cols = c("X",  "Y"), n_knots = 200, type= "cutoff_search")
   
   fit <- tradeoffModels(
     #formula = "logN1 ~ s(ssh_scaled) + s(sst_scaled) + s(salinity_scaled) + as.factor(gearGeneral) + s(month, bs = 'cc', k = 12)",
@@ -165,14 +165,12 @@ for (i in 1:length(tradeoffs)) {
 
 modelChecks(fit)
 
-tidy(fit, conf.int = T, effects = "ran_pars")
-
 fit %>% summary()
 
 }
 #-----------------------------------------------------------------------------#
 # Reload model
-modelType = c("logN1_speciesRange_allPrograms_base_sst+ssh+salinity+dfs+month_as.factor(gearGeneral)")
+modelType = c("logN1_speciesRange_allPrograms_base_sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)")
 load(file = paste0("Results/", species, "/Models/", modelType, ".rdata"))
 
 # Plot smooother on variables (include "scale = response" to plot on response scale)
@@ -184,10 +182,44 @@ visreg(fit, xvar = "month", scale = "response")
 
 # SANDBOX --------------------------------------------------------------------
 
+# Trying to match models that are in the original NSF proposal
+formula = as.formula(paste0("logN1 ~", mainFormula, "+ s(month, bs = 'cc', k = 12) +", gearTerm))
+
+fit <- sdmTMB(formula = "logN1 ~ s(ssh_scaled) + s(salinity_scaled) + s(bottom_depth_scaled) + s(month, bs = 'cc', k = 12, by = sst_scaled) + as.factor(gearGeneral)",
+              data = data,
+              mesh = mesh,
+              spatial_varying = ~ 0 + timeblock, time = "timeblock",
+              family = tweedie(link = "log"),
+              control = sdmTMBcontrol(nlminb_loops = 2, newton_loops = 1),
+              spatial = "on",
+              spatiotemporal = "off",
+              silent = FALSE)
+
+# ASSUMPTIONS -----------------------------------------------------------------
+# Test for normality
+
 ## Test if a spatial model should be used (Moran's I) ----------
 inv_dists <- as.matrix(dist(speciesData[,c("X","Y")]))
 diag(inv_dists) <- 0
 Moran.I(speciesData$logN1, inv_dists)
+
+## Test for covariance
+glm <- glm(data = data, formula = logN1 ~ ssh_scaled + sst_scaled + salinity_scaled + bottom_depth_scaled + distance_from_shore_scaled)
+
+summary(glm)
+car::vif(glm)
+
+#create vector of VIF values
+vif_values <- car::vif(glm)
+
+#create horizontal bar chart to display each VIF value
+barplot(vif_values, main = "VIF Values", horiz = TRUE, col = "steelblue")
+abline(v = 5, lwd = 3, lty = 2)
+
+vars <- data[ , c("ssh_scaled", "sst_scaled", "salinity_scaled", "bottom_depth_scaled", "distance_from_shore_scaled")]
+
+#create correlation matrix
+cor(vars)
 
 ## Latitude model --------
 gam.lat <- mgcv::gam(data = data.latModel, latitude ~ s(day_of_year_weighted) + as.factor(gearGeneral))
@@ -196,4 +228,3 @@ plot(gam.lat)
 p.gam = predict(gam.lat, newdata = data.latModel)
 plot(x = data.latModel$day_of_year, y = p.gam)
 
-# Testing if day of the year can predict latitude ---------------

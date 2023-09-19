@@ -1,7 +1,7 @@
 # GET SPECIES DATA -------------------------------------------------------------
 getspeciesData <- function(species, speciesRangeSubset) {
   
-  speciesData <- read.csv("Data/AllCruises_Combined_200nm.csv") %>%
+  speciesData <- read.csv(file = "Data/AllCruises_Combined_200nm.csv") %>%
     subset(scientific_name == species & year >= 1995 & year <= 2019) %>%
     subset(gearGeneral != "MOCNESS") %>% 
     mutate(., presence = 1) %>% 
@@ -24,10 +24,10 @@ getspeciesData <- function(species, speciesRangeSubset) {
   maxLon = max(speciesData$longitude)
   minLon = min(speciesData$longitude)
 
-  # Merge with tow data
+  # Merge with ROMS data
   speciesData <- merge(all_tows_roms, speciesData[c("towID", "gear",  "scientific_name", "abundance", "abundance_scaled", "presence")], all.x = TRUE)
   
-  # Replace all NA density anomaly values with zero (these are true zeroes)
+  # Replace all NA abundance values with zero (these are true zeroes)
   speciesData <-  mutate(speciesData, presence = replace_na(presence, 0),
                          # catch_anomaly_positive = replace_na(catch_anomaly_positive, 0),
                          abundance = replace_na(abundance, 0),
@@ -75,10 +75,6 @@ getspeciesData <- function(species, speciesRangeSubset) {
   }
   
   speciesData$region <- factor(speciesData$region, levels = c("Southern CCE", "Central CCE", "OR/WA", "British Columbia", "Gulf of Alaska"))
-  
-  # Assign folds for cross-validation
-  n_folds = 5
-  speciesData$fold = rep(seq(1, n_folds), nrow(speciesData))[seq(1, nrow(speciesData))]
   
   return(speciesData)
 }

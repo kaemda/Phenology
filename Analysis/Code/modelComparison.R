@@ -18,8 +18,8 @@ setwd("C://KDale/Projects/Phenology/")
 all_tows_roms <- read.csv("Data/AllTows_200nm.csv") %>%
   subset(., year >= 1995 & year <= 2019) 
 
-# RUN MODEL COMPARISON --------------------------------------------------------------------------------
-runModelComparison <- function(mainFormula, formula = NA, data, programSubset = "allPrograms", dependentVar, spatiotemporalType, gearTerm, timeTerm) {
+# ENVIRO COVARIATE COMPARISON --------------------------------------------------------------------------------
+enviroCovariateComparison <- function(mainFormula, formula = NA, data, programSubset = "allPrograms", dependentVar, spatiotemporalType, gearTerm, timeTerm) {
   
   # Construct formula
   if (!is.na(formula)) {
@@ -174,34 +174,36 @@ tradeoffModelComparison <- function(formula = NA, mainFormula, data, shortFormul
 
 # TRADEOFF MODEL COMPARISON ----------------------------
 
-species = "Anoplopoma fimbria" # "Sebastes jordani", "Glyptocephalus zachirus")
+speciesList = c("Glyptocephalus zachirus", "Merluccius productus", "Parophrys vetulus") # "Sebastes jordani", "Glyptocephalus zachirus")
 
 source("Analysis/Code/getSpeciesData.R")
 
-data = getspeciesData(species, speciesRangeSubset = "speciesRange")
-data.sf <- st_as_sf(data, coords = c("longitude", "latitude")) %>% 
-  st_set_crs(4326) %>% st_transform(5070)
-data$year_scaled = scale(data$year)
-
-# Figure out appropriate block size
-sac.ln1 <- cv_spatial_autocor(x = data.sf, column = "abundance", plot = T)
-# plot(sac.ln1$variograms[[1]])
-blocksize <- sac.ln1$range
-
-# Several ways of determining folds - spatial, buffer, nearest neighbor
-folds.spatial <- cv_spatial(x = data.sf, size = blocksize, 
-                    column = "abundance",
-                    k = 5,
-                    selection = "random",
-                    iteration = 100)
-
-data$fold = folds.spatial$folds_ids
-
-for (i in 1:length(species)) {
+for (i in 1:length(speciesList)) {
+  
+  species = speciesList[i]
+  
+  data = getspeciesData(species, speciesRangeSubset = "speciesRange")
+  data.sf <- st_as_sf(data, coords = c("longitude", "latitude")) %>% 
+    st_set_crs(4326) %>% st_transform(5070)
+  data$year_scaled = scale(data$year)
+  
+  # Figure out appropriate block size
+  sac.ln1 <- cv_spatial_autocor(x = data.sf, column = "abundance", plot = T)
+  # plot(sac.ln1$variograms[[1]])
+  blocksize <- sac.ln1$range
+  
+  # Several ways of determining folds - spatial, buffer, nearest neighbor
+  folds.spatial <- cv_spatial(x = data.sf, size = blocksize, 
+                              column = "abundance",
+                              k = 5,
+                              selection = "random",
+                              iteration = 100)
+  
+  data$fold = folds.spatial$folds_ids
   
   dependentVar = "logN1"
-  shortFormula ="0 + sst+ssh+salinity+dfs+month"
-  mainFormula = "0 + (sst_scaled) + (ssh_scaled) + (salinity_scaled) + (distance_from_shore_scaled)"
+  shortFormula ="sst+ssh+salinity+dfs+bd+month"
+  mainFormula = "s(sst_scaled, k = 3) + s(ssh_scaled, k = 3) + s(salinity_scaled, k = 3) + s(distance_from_shore_scaled, k = 3) + s(bottom_depth_scaled, k = 3)"
   #shortFormula ="sst+salinity+dfs+month"
   #mainFormula = "(sst_scaled) + (salinity_scaled) + (distance_from_shore_scaled)"
   gearTerm = "as.factor(gearGeneral)"
@@ -251,15 +253,23 @@ for (i in 1:length(species)) {
     dependentVar = dependentVar, # "presence", "logN1", or "catch_anomaly_positive"
     gearTerm = gearTerm
   )
+  
+  elpd_se <- function(model) {
+    return(sd(model$fold_elpd)/length(model$fold_elpd)
+    )
+  }
+  
+  modelComparisonOutput <- data.frame(model = c("base", "geo", "pheno", "both"), elpd = NA, elpd_se = NA, sum_loglik = NA)
+  
+  modelComparisonOutput$elpd = c(base.cv$elpd, geo.cv$elpd, pheno.cv$elpd, both.cv$elpd)
+  modelComparisonOutput$elpd_se = c(elpd_se(base.cv), elpd_se(geo.cv), elpd_se(pheno.cv), elpd_se(both.cv))
+  modelComparisonOutput$sum_loglik = c(base.cv$sum_loglik, geo.cv$sum_loglik, pheno.cv$sum_loglik, both.cv$sum_loglik)
+  modelComparisonOutput <- mutate(modelComparisonOutput, elpd_diff = max(elpd) - (elpd)) %>% 
+    mutate(diff_ratio = elpd_diff/elpd_se)
+  
+  write.csv(modelComparisonOutput, file = paste0("Results/", species, "/", species, "_modelComparisonOutput.csv"))
+
 }
-base.cv$elpd
-base.cv$sum_loglik
-geo.cv$elpd
-geo.cv$sum_loglik
-pheno.cv$elpd
-pheno.cv$sum_loglik
-both.cv$elpd
-both.cv$sum_loglik
 
 # ENVIRO COVARIATE COMPARISON -------------------------------------------------------------------------------
 
@@ -314,7 +324,7 @@ for(response in 1:length(responses)) {
           for (spatiotemporal in 1:length(spatiotemporalTypes)) {
             for (covariate in 1:length(covariates)) {
               
-              fit <- runModelComparison(
+              fit <- enviroCovariateComparison(
                 data = speciesData,
                 mainFormula = covariates[covariate], 
                 programSubset = programSubset[programs],
