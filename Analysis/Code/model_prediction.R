@@ -981,6 +981,9 @@ cumulativeCatch <- function() {
           scale_x_continuous(n.breaks = 12)+
           scale_y_continuous(n.breaks = length(timesteps)))
 }
+# CREATE PREDICTION OBJECTS
+
+
 # RUN FUNCTIONS -------------------------------------------------------------------------
 
 grid.df = NULL
@@ -1011,11 +1014,11 @@ modelTypes = c("logN1_speciesRange_allPrograms_pheno_0 + sst+ssh+salinity+dfs+mo
 speciesList = c("Sardinops sagax", "Tarletonbeania crenularis", "Parophrys vetulus")
 
 # Single species
-speciesList = "Glyptocephalus zachirus"
+speciesList = "Sardinops sagax"
 modelTypes = c("logN1_speciesRange_allPrograms_geo_sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)")
-modelTypes = c("logN1_speciesRange_allPrograms_pheno_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_base_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_both_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)")
+modelTypes = c("logN1_speciesRange_allPrograms_pheno_sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
+               "logN1_speciesRange_allPrograms_base_sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
+               "logN1_speciesRange_allPrograms_both_sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)")
 
 # Change these to force a new grid or new prediction
 makeNewGrid = F
@@ -1078,7 +1081,8 @@ for(i in 1:length(speciesList)) {
     } else { # Otherwise, load existing prediction object
       load(predictionObjectName)
     }
-    
+  }
+  
     # Predictive performance -----
     predictivePerformance(fit, response, p.original)
     
