@@ -195,7 +195,9 @@ centralTendency_figures <- function(response, species, modelType) {
   dev.off()
   
 } 
+
 #------------------------------------------------------------------------------#
+# CT MULTISPECIES -----------
 centralTendencyMultiSpecies <- function(speciesList, modelTypes) {
   
   for (s in 1:length(speciesList)) {
@@ -259,8 +261,8 @@ centralTendencyMultiSpecies <- function(speciesList, modelTypes) {
                                    geom_smooth(method = "lm", aes(color = species, fill = species)) +
                                    theme_classic(base_size = 14) +
                                    coord_cartesian(expand = TRUE) + 
-                                   scale_fill_manual(values = c("tan3", "skyblue2","navy")) +
-                                   scale_color_manual(values = c("tan3", "skyblue2","navy")) +
+                                   scale_fill_manual(values = multispeciesColors) +
+                                   scale_color_manual(values = multispeciesColors) +
                                    theme(legend.position = "none") +
                                    labs(x = xaxislabels[i], y = yaxislabels[j]))
       index = index + 1
@@ -271,8 +273,8 @@ centralTendencyMultiSpecies <- function(speciesList, modelTypes) {
   legendPlot <- ggplot(data = cog.all, aes(x = cog.lat, y = avgsst, col = species, fill = species)) +
     geom_point() + 
     geom_smooth() +
-    scale_color_manual(values = c("tan3", "skyblue2","navy")) +
-    scale_fill_manual(values = c("tan3", "skyblue2","navy"))
+    scale_color_manual(values = multispeciesColors) +
+    scale_fill_manual(values = multispeciesColors)
   
   # Create some space to the left of the legend
   legend <- get_legend(legendPlot + theme(legend.box.margin = margin(0, 0, 0, 12)))
@@ -709,10 +711,9 @@ effectsFigures <- function(species, modelType) {
 quotientCurves <- function(species, modelType) {
   
   variables = c("sst_roms", "ssh_roms", "salinity_roms")
-  xaxisLabels = c("Sea surface temperature (\u00b0C)", "Sea surface height (m)", "Salinity (ppt)")
+  xaxisLabels = c("Sea surface \ntemperature (\u00b0C)", "Sea surface \nheight (m)", "Salinity (ppt)")
   digits = c(0,1,0)
   plotlist <- list()
-  nicheBreadth = data.frame(species = species, variable = variables, hurlbert = NA, smith = NA, smith.lower = NA, smith.upper = NA)
   
   for(i in 1:length(variables)) {
     
@@ -734,6 +735,37 @@ quotientCurves <- function(species, modelType) {
                              theme_classic(base_size = 12) +
                              labs(x = xaxisLabels[i], y = "Quotient"))
     
+    
+  }
+  # Plot quotient curves
+  pdf(file = paste0("Figures/", species, "/QuotientCurves_", modelType,".pdf"), width = 9, height = 4)
+  print(cowplot::plot_grid(plotlist = plotlist, align = "hv", nrow = 1))
+  dev.off()
+  
+}
+#------------------------------------------------------------------------------#
+# NICHE BREADTH ---------
+calculateNicheBreadth <- function(species, modelType) {
+  
+  predictionObjectName = paste0("Results/", species, "/Models/prediction_objects_", modelType, ".rdata")
+  load(predictionObjectName)
+  
+  variables = c("sst_roms", "ssh_roms", "salinity_roms")
+  xaxisLabels = c("Sea surface \ntemperature (\u00b0C)", "Sea surface \nheight (m)", "Salinity (ppt)")
+  
+  nicheBreadth = data.frame(species = species, variableNames = xaxisLabels, variable = variables, hurlbert = NA, smith = NA, smith.lower = NA, smith.upper = NA)
+  for(i in 1:length(variables)) { 
+    
+    # Create bins
+    bins <- seq(floor(min(get("p")[,variables[i]])), ceiling(max(get("p")[,variables[i]])), 2)
+    p$bins <- data.frame(bins = round(x = get("p")[,variables[i]], digits = digits[i]))[,1]
+    
+    fish.per.bin <- group_by_at(p, c("bins")) %>%
+      mutate(towID = paste(latitude, longitude, year, month, sep = "_")) %>% 
+      dplyr::summarize(., est_retransform = sum(est_retransform), numTows = length(unique(towID))) %>%
+      mutate(., propFish = est_retransform/sum(est_retransform), propTows = numTows/sum(numTows)) %>% 
+      mutate(quotient = propFish/propTows)
+    
     # Levin's measure of niche breadth, standardized to 0-1
     hurlbert = 1/sum(fish.per.bin$propFish ^2 / fish.per.bin$propTows) 
     hurlbert.standardized = (hurlbert-min(fish.per.bin$propTows))/(1-min(fish.per.bin$propTows))
@@ -749,18 +781,53 @@ quotientCurves <- function(species, modelType) {
     sin(asin(smith) + (1.96/2*sqrt(1000)))
   }
   
-  # Resample
-  # sample_true = sample_variable( Sdreport=fit_sign$parameter_estimates$SD,
-  #                                Obj=fit_sign$tmb_list$Obj, variable_name="Phi2_gk",n_samples = 250 )
-  
-  # Plot
-  pdf(file = paste0("Figures/", species, "/QuotientCurves_", modelType,".pdf"), width = 9, height = 4)
-  print(cowplot::plot_grid(plotlist = plotlist, align = "hv", nrow = 1))
-  dev.off()
+  # Plot niche breadth
+  print(ggplot(nicheBreadth) +
+          geom_point(aes(x = variableNames, y = smith), size = 4) +
+          labs(x = "Environmental covariate", y = "Smith's measure") +
+          theme_classic(base_size = 14) +
+          geom_errorbar(aes(x = variableNames, ymin = smith.lower, ymax = smith.upper), width = 0.2, linewidth = 1.5))
   
   write.csv(nicheBreadth, file = paste0("Results/", species, "/", species, "_", modelType,  "nicheBreadth.csv"))
   
 }
+
+
+# NICHE BREADTH MULTISPECIES -------
+nicheBreadthMultiSpecies <- function(speciesList, modelTypes) {
+  
+  nicheBreadthCombined = NA
+  
+  for (i in 1:length(speciesList)) {
+    
+    # Load in niche breadth csv
+    file = paste0("Results/", speciesList[i], "/", speciesList[i], "_", modelTypes[i],  "nicheBreadth.csv")
+    # if(file.exists(file)) { 
+    #   nicheBreadth = read.csv(file) 
+    # } else {
+      calculateNicheBreadth(speciesList[i], modelTypes[i])
+      nicheBreadth = read.csv(file)
+    # }
+    
+    # Bind niche breadth datasets together
+    if (i == 1) {
+      nicheBreadthCombined = nicheBreadth
+    } else {
+      nicheBreadth = bind_rows(nicheBreadthCombined, nicheBreadth)
+    }
+    
+  }
+  
+  # Plot niche breadth
+  print(ggplot(nicheBreadth) +
+          geom_point(aes(x = variableNames, y = smith, color = species), size = 4) +
+          geom_errorbar(aes(x = variableNames, ymin = smith.lower, ymax = smith.upper, color = species), width = 0.2, linewidth = 1.5) +
+          labs(x = "Environmental covariate", y = "Smith's measure") +
+          theme_classic(base_size = 14) +
+          scale_color_manual(values = multispeciesColors))
+  
+}
+
 # PLOT MAPS ----------------------------------------------------------------------------
 plot_map <- function(dat, column) {
   ggplot(dat, aes(X, Y, fill = {{ column }})) +
@@ -885,20 +952,20 @@ leadingTrailing <- function(species) {
 }
 # CUMULATIVE CATCH ------------------------------------------
 cumulativeCatch <- function() {
-  # Calculate 95% cumulative catch over time -------------
-  predictedCatch.time.cumulative <- predictedCatch.time %>% ungroup() %>% group_by_at(c("timeblock", "month")) %>%
+  
+  predictedCatch.time.cumulative <- predictedCatch.time %>% ungroup() %>% group_by_at(c("year", "month")) %>%
     summarize(mean_est_retransform = mean(mean_est_retransform)) %>% 
     mutate(cum_catch = cumsum(mean_est_retransform))
   
   cumulativeAbundance <- predictedCatch.time.cumulative %>% 
     summarize(fifteen = max(cum_catch)*0.15, fifty = max(cum_catch)*0.5, eightyfive = max(cum_catch)*0.85)
   
-  timesteps = unique(cumulativeAbundance$timeblock)
+  timesteps = unique(cumulativeAbundance$year)
   
   for (i in 1:length(timesteps)) {
     
     # Subset timesteps
-    timeSubset = subset(predictedCatch.time.cumulative, timeblock == timesteps[i])
+    timeSubset = subset(predictedCatch.time.cumulative, year == timesteps[i])
     
     # Find month at which 15%, 50%, and 85% are passed
     
@@ -907,12 +974,12 @@ cumulativeCatch <- function() {
     cumulativeAbundance$eightyfive.month[i] = max(timeSubset$month[timeSubset$cum_catch < cumulativeAbundance$eightyfive[i]])
   }
   
-  ggplot(cumulativeAbundance) +
-    geom_errorbarh(mapping = aes(y = year, xmin = fifteen.month, xmax = eightyfive.month), )+
-    geom_point(mapping = aes(y = year, x = fifty.month)) +
-    labs(x = "Month", y = "Year") +
-    scale_x_continuous(n.breaks = 12)+
-    scale_y_continuous(n.breaks = length(years))
+  print(ggplot(cumulativeAbundance) +
+          geom_errorbarh(mapping = aes(y = year, xmin = fifteen.month, xmax = eightyfive.month))+
+          geom_point(mapping = aes(y = year, x = fifty.month)) +
+          labs(x = "Month", y = "Year") +
+          scale_x_continuous(n.breaks = 12)+
+          scale_y_continuous(n.breaks = length(timesteps)))
 }
 # RUN FUNCTIONS -------------------------------------------------------------------------
 
@@ -921,6 +988,7 @@ grid.df = NULL
 northAmerica <- read_sf("C://KDale/GIS/North_South_America.shp") %>% st_union() %>% st_transform(., crs = "EPSG:5070")
 programColors = c("IMECOCAL" = "firebrick3", "CalCOFI" = "coral3","RREAS" = "darkgoldenrod2", "PRS_juveniles" ="darkseagreen3","PRS_larvae" ="cornflowerblue", "NH-Line" ="deepskyblue3", "Canada" = "darkslateblue","EcoFOCI" ="darkslategray")
 regionColors = c("Southern CCE" = "firebrick3", "Central CCE" = "darkgoldenrod2", "OR/WA" ="darkseagreen3","British Columbia" ="cornflowerblue", "British Columbia" = "darkslateblue","Gulf of Alaska" ="darkslategray")
+multispeciesColors = c("tan3", "skyblue2","navy")
 theme_set(theme_classic(base_size = 12))
 timeblocks <- read_xlsx("Data/timeblocks.xlsx", sheet = 1)
 
@@ -1101,7 +1169,6 @@ for(i in 1:length(speciesList)) {
     # Frequency of sampling for species----
     #frequencyOfSampling(speciesData = data)
     
-    
     # Env tracking figures----
     #envTracking_figures(species = species, modelType = modelType)
     #envVariance_figures(species = species, modelType = modelType)
@@ -1131,16 +1198,22 @@ for(i in 1:length(speciesList)) {
     #Leading and trailing -------
     leadingTrailing(species)
     
+    #Cumulative curves --------
+    cumulativeCatch()
+    
   }
 }
 
 # Central tendency (multi-species plot) --------------
 # Mixed taxonomic models
-modelTypes = c("logN1_speciesRange_allPrograms_pheno_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_geo_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_geo_0 + sst+ssh+salinity+dfs+month_as.factor(gearGeneral)")
 speciesList = c("Sardinops sagax", "Tarletonbeania crenularis", "Parophrys vetulus")
+modelTypes = c("logN1_speciesRange_allPrograms_pheno_sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
+               "logN1_speciesRange_allPrograms_geo_sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
+               "logN1_speciesRange_allPrograms_geo_sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)")
 centralTendencyMultiSpecies(speciesList, modelTypes)
+
+# Niche breadth (multi-species plot) --------------
+nicheBreadthMultiSpecies(speciesList, modelTypes = modelTypes)
 
 # Test for quadratic relationship between estimated abundance and environmental covariates
 mod <- mgcv::gam(fit$family$linkinv(p$est_retransform) ~ s(p$sst_roms, k = 3), method = "REML", family = gaussian())

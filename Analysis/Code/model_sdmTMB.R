@@ -128,7 +128,7 @@ modelChecks <- function(fit) {
 # RUN FUNCTIONS -----------------------------------------------------------------
 
 # Set species and models
-species = "Glyptocephalus zachirus"
+species = "Parophrys vetulus"
 tradeoffs = c("both", "geo", "pheno", "base")
 tradeoffs = c("geo")
 
