@@ -36,7 +36,7 @@ getspeciesData <- function(species, speciesRangeSubset) {
                          scientific_name = species) %>% 
     subset(., !is.na(sst_roms) & !is.na(ssh_roms) & !is.na(salinity_roms)& !is.na(gear)) %>% # Remove any tows without ROMS data
     subset(., sst_roms != 0 & ssh_roms != 0 & salinity_roms != 0) %>%  # Remove any tows where ROMS has null values
-    mutate(., sst_scaled = scale(sst_roms)[,1], ssh_scaled = scale(ssh_roms)[,1], salinity_scaled = scale(salinity_roms)[,1]) %>%  # Center and scale enviro data
+    mutate(., sst_scaled = scale(sst_roms)[,1], ssh_scaled = scale(ssh_roms)[,1], salinity_scaled = scale(salinity_roms)[,1], spice_scaled = scale(spice)[,1]) %>%  # Center and scale enviro data
     mutate(., logN1 = log(abundance_scaled+1))
   
 
@@ -52,7 +52,7 @@ getspeciesData <- function(species, speciesRangeSubset) {
   speciesData$Y = albert_equal_area[,2]
   
   # Add time block
-  timeblocks <- read.xlsx(file = "Data/timeblocks.xlsx", sheetIndex = 1)
+  timeblocks <- read_xlsx(path = "Data/timeblocks.xlsx", sheet = 1)
   speciesData <- merge(speciesData, timeblocks, by = "year")
   speciesData$timeblock = factor(speciesData$timeblock, levels = c("1995-1999", "2000-2004", "2005-2009", "2010-2014", "2015-2019"))
   

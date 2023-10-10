@@ -15,14 +15,16 @@ linkroms <- function(tows) {
   
   roms <- nc_open(filename = "Data/ROMS/nep_srf_1995-2019.nc")
   spiciness <- nc_open(filename = "Data/Environment/Spiciness/nep_avg_spice_dens_combined.nc")
-  spiciness <- nc_open(filename = "Data/Environment/Spiciness/nep_avg_spice_dens_1996.nc")
-  
+
   longitude=ncvar_get(roms, varid = "lon_rho")
   latitude=ncvar_get(roms, varid = "lat_rho")
   sst=ncvar_get(roms, varid = "temp")
   ssh=ncvar_get(roms, varid = "zeta")
   salinity = ncvar_get(roms, varid = "salt")
-  spice = ncvar_get(spiciness, varid = "spice")
+  #spice = ncvar_get(spiciness, varid = "spice")
+  #spice = apply(spice, c(1,2,4), FUN=mean, na.rm=T) # average across depths
+  #save(spice, file = "Data/Environment/Spiciness/spice.rdata")
+  load(file = "Data/Environment/Spiciness/spice.rdata")
   
   # Get time information from the NC file
   # Create a year_month factor to link tows

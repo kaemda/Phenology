@@ -12,6 +12,7 @@ library(RANN)
 library(ncdf4)
 library(rerddap)
 library(rerddapXtracto)
+library(marmap)
 
 # analysis
 library(qdap)
@@ -20,7 +21,6 @@ library(qdap)
 library(sf)
 library(ggplot2)
 library(raster)
-library(marmap)
 
 setwd("C://KDale/Projects/Phenology/")
 
@@ -30,6 +30,9 @@ speciesNames <- as.vector(speciesInfo$scientific_name)
 colors = c("IMECOCAL" = "firebrick3", "CalCOFI" = "coral3", "RREAS" = "darkgoldenrod2", "PRS_juveniles" = "darkseagreen3", "PRS_larvae" = "cornflowerblue", "NH-Line" = "deepskyblue3", "Canada" =  "darkslateblue", "EcoFOCI" = "darkslategray")
 regionColors = c("Southern CCE" = "firebrick3", "Central CCE" = "darkgoldenrod2", "OR/WA" ="darkseagreen3","British Columbia" ="cornflowerblue", "British Columbia" = "darkslateblue","Gulf of Alaska" ="darkslategray")
 
+# Load North America shapefile
+northAmerica <- st_read("C://KDale/GIS/North_South_America.shp") %>%
+  st_union() %>% st_make_valid()
 
 # ERDDAP function ---------------------------------------------------------------
 getERDDAP <- function(name) {
@@ -497,9 +500,7 @@ nhline <- read.csv("Data/NHLine.csv") %>% mutate(., across("date", as.Date)) %>%
 canada <- read.csv("Data/canada.csv") %>% mutate(., across("date", as.Date))
 ecofoci <- read.csv("Data/ecofoci.csv") %>% mutate(., across("date", as.Date)) %>% mutate(., across("gear", as.character))
 
-# Load North America shapefile
-northAmerica <- st_read("C://KDale/GIS/North_South_America.shp") %>%
-  st_union() %>% st_make_valid()
+
 
 ## Combine datasets, select relevant columns, add unique tow ID -----
 all_data <- bind_rows(list(imecocal, calcofi, rreas, prerecruit, nhline, canada, ecofoci)) %>%

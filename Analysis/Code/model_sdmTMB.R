@@ -1,6 +1,5 @@
 # LOAD PACKAGES ---------------------------------------------------------------
 # Data management
-library(xlsx)
 library(readxl)
 library(tidyverse)
 library(dplyr)
@@ -41,7 +40,7 @@ tradeoffModels <- function(formula = NA, mesh, mainFormula, data, shortFormula, 
                   data = data,
                   mesh = mesh,
                   family = tweedie(link = "log"),
-                  control = sdmTMBcontrol(nlminb_loops = 2, newton_loops = 1),
+                  control = sdmTMBcontrol(nlminb_loops = 2),
                   spatial = "on",
                   spatiotemporal = "off",
                   silent = FALSE)
@@ -54,7 +53,7 @@ tradeoffModels <- function(formula = NA, mesh, mainFormula, data, shortFormula, 
                   data = data,
                   mesh = mesh,
                   family = tweedie(link = "log"),
-                  control = sdmTMBcontrol(nlminb_loops = 2, newton_loops = 1),
+                  control = sdmTMBcontrol(nlminb_loops = 2),
                   spatial = "on",
                   spatiotemporal = "iid",
                   time = "timeblock",
@@ -68,7 +67,7 @@ tradeoffModels <- function(formula = NA, mesh, mainFormula, data, shortFormula, 
                   data = data,
                   mesh = mesh,
                   family = tweedie(link = "log"),
-                  control = sdmTMBcontrol(nlminb_loops = 2, newton_loops = 1),
+                  control = sdmTMBcontrol(nlminb_loops = 2),
                   spatial = "on",
                   spatiotemporal = "iid",
                   time = "timeblock",
@@ -80,7 +79,7 @@ tradeoffModels <- function(formula = NA, mesh, mainFormula, data, shortFormula, 
                   data = data,
                   mesh = mesh,
                   family = tweedie(link = "log"),
-                  control = sdmTMBcontrol(nlminb_loops = 2, newton_loops = 1),
+                  control = sdmTMBcontrol(nlminb_loops = 2),
                   spatial = "on",
                   spatiotemporal = "off",
                   silent = FALSE)
@@ -122,52 +121,59 @@ modelChecks <- function(fit) {
   # sigma_E: SD of the spatiotemporal process ("Epsilon").
   # tweedie_p: Tweedie p (power) parameter; between 1 and 2.
   tidy(fit, effects = "ran_pars", conf.int = TRUE)
-
+  
 }
 
 # RUN FUNCTIONS -----------------------------------------------------------------
 
 # Set species and models
-species = "Parophrys vetulus"
-tradeoffs = c("both", "geo", "pheno", "base")
-tradeoffs = c("geo")
+tradeoffs <- read_xlsx("Results/Tradeoffs.xlsx", sheet = 1) %>% subset(., chosen_model == "x")
 
-# Get species data
-source("Analysis/Code/getSpeciesData.R")
-speciesRange = "speciesRange"
-data <- getspeciesData(species = species, speciesRangeSubset = speciesRange) %>% 
-  mutate(year_scaled = scale(year), gear_factor = as.numeric(as.factor(gearGeneral)), timeblock_factor = as.numeric(timeblock)) 
+# Mixed taxonomic models
+speciesList = tradeoffs$scientific_name
+tradeoffsList = tradeoffs$model
+
+# speciesList = c("Engraulis mordax")
+# tradeoffs = c("both")
 
 dependentVar = "logN1"
-shortFormula ="sst+ssh+salinity+dfs+bd+month"
-mainFormula = "s(sst_scaled, k = 3) + s(ssh_scaled, k = 3) + s(salinity_scaled, k = 3) + s(distance_from_shore_scaled, k = 3) + s(bottom_depth_scaled, k = 3)"
-# shortFormula ="ssh+dfs+month"
-# mainFormula = "s(ssh_scaled, basis = 'cv')+s(distance_from_shore_scaled, )"
+shortFormulas = tradeoffs$covariates
+mainFormulas = tradeoffs$main_formula
+# shortFormula ="sst+ssh+salinity+bd+month"
+# mainFormula = "s(sst_scaled, k = 3) + s(ssh_scaled, k = 3) + s(salinity_scaled, k = 3) + s(bottom_depth_scaled, k = 3)"
 gearTerm = "as.factor(gearGeneral)"
+ 
+  for (i in 14:length(tradeoffsList)) {
+    
+    species = speciesList[i]
+    
+    # Get species data
+    source("Analysis/Code/getSpeciesData.R")
+    speciesRange = "speciesRange"
+    data <- getspeciesData(species = species, speciesRangeSubset = speciesRange) %>% 
+      mutate(year_scaled = scale(year), gear_factor = as.numeric(as.factor(gearGeneral)), timeblock_factor = as.numeric(timeblock)) 
+    
+    # Make mesh
+    mesh <- make_mesh(data, xy_cols = c("X",  "Y"), n_knots = 200, type= "cutoff_search")
+    
+    fit <- tradeoffModels(
+      #formula = "logN1 ~ s(ssh_scaled) + s(sst_scaled) + s(salinity_scaled) + as.factor(gearGeneral) + s(month, bs = 'cc', k = 12)",
+      data = data,
+      mesh = mesh,
+      mainFormula = mainFormulas[i], 
+      shortFormula = shortFormulas[i],
+      species = species,
+      speciesRange = speciesRange,
+      varying = tradeoffsList[i],
+      programSubset = c("allPrograms"), # some combination of programs or "allPrograms" (default)
+      dependentVar = dependentVar, # "presence", "logN1", or "catch_anomaly_positive"
+      gearTerm = gearTerm) # "as.factor(gearGeneral)" or ""
+    
+    modelChecks(fit)
+    
+    fit %>% summary()
+  }
 
-for (i in 1:length(tradeoffs)) {
-  
-  # Make mesh
-  mesh <- make_mesh(data, xy_cols = c("X",  "Y"), n_knots = 200, type= "cutoff_search")
-  
-  fit <- tradeoffModels(
-    #formula = "logN1 ~ s(ssh_scaled) + s(sst_scaled) + s(salinity_scaled) + as.factor(gearGeneral) + s(month, bs = 'cc', k = 12)",
-    data = data,
-    mesh = mesh,
-    mainFormula = mainFormula , 
-    shortFormula = shortFormula,
-    species = species,
-    speciesRange = speciesRange,
-    varying = tradeoffs[i],
-    programSubset = c("allPrograms"), # some combination of programs or "allPrograms" (default)
-    dependentVar = dependentVar, # "presence", "logN1", or "catch_anomaly_positive"
-    gearTerm = gearTerm) # "as.factor(gearGeneral)" or ""
-
-modelChecks(fit)
-
-fit %>% summary()
-
-}
 #-----------------------------------------------------------------------------#
 # Reload model
 modelType = c("logN1_speciesRange_allPrograms_base_sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)")
