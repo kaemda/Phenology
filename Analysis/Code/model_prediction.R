@@ -700,6 +700,7 @@ effectsFigures <- function(species, modelType) {
           geom_smooth() +
           labs(x = "Latitude", y = "Mean fixed effect") +
           scale_color_brewer(palette = "Spectral") +
+          theme_classic(base_size = 12) +
           ggtitle(bquote(~italic(.(species)))) +
           scale_fill_brewer(palette = "Spectral"))
   dev.off()
@@ -711,6 +712,7 @@ effectsFigures <- function(species, modelType) {
           geom_smooth() +
           labs(x = "Latitude", y = "Mean random effect") +
           scale_color_brewer(palette = "Spectral") +
+          theme_classic(base_size = 12) +
           ggtitle(bquote(~italic(.(species)))) +
           scale_fill_brewer(palette = "Spectral"))
   dev.off()
@@ -1088,10 +1090,10 @@ modelTypes = tradeoffs$file_name
 #modelTypes = c("logN1_speciesRange_allPrograms_base_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)")
 
 makeNewPrediction = T
-makeNewGrid = T
+makeNewGrid = F
 
 # Create prediction objects-----
-  for (i in 11:length(modelTypes)) {
+  for (i in 1:length(modelTypes)) {
     
     # Set species and model
     species = speciesList[i]
@@ -1255,8 +1257,8 @@ for (j in 1:length(modelTypes)) {
   #Quotient curves----------
   quotientCurves(species, modelType)
   
-  #Leading and trailing -------
-  leadingTrailing(species)
+  #Leading and trailing and chi squared -------
+  #leadingTrailing(species)
   
   #Cumulative curves --------
   cumulativeCatch(species)
