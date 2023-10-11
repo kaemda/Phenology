@@ -1088,10 +1088,10 @@ modelTypes = tradeoffs$file_name
 #modelTypes = c("logN1_speciesRange_allPrograms_base_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)")
 
 makeNewPrediction = T
-makeNewGrid = F
+makeNewGrid = T
 
 # Create prediction objects-----
-  for (i in 1:length(modelTypes)) {
+  for (i in 11:length(modelTypes)) {
     
     # Set species and model
     species = speciesList[i]
