@@ -278,7 +278,8 @@ for (i in 14:length(speciesList)) {
 
 # CALCULATE ELPD SE --------------------------------
 elpd_se <- function(model) {
-  return(sd(model$fold_elpd)/length(model$fold_elpd)
+  # sd(diffs) / sqrt(N)
+  return(sd(model$fold_elpd)/sqrt(length(model$fold_elpd))
   )
 }
 

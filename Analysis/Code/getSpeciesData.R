@@ -3,7 +3,7 @@ getspeciesData <- function(species, speciesRangeSubset) {
   
   speciesData <- read.csv(file = "Data/AllCruises_Combined_200nm.csv") %>%
     subset(scientific_name == species & year >= 1995 & year <= 2019) %>%
-    subset(gearGeneral != "MOCNESS") %>% 
+    subset(gearGeneral != "MOCNESS" & gearGeneral != "Cobb MWT") %>% 
     mutate(., presence = 1) %>% 
     mutate(., abundance_scaled = coalesce( 
       scale(larvae_10m2, center = F)[,1],

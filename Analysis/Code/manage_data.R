@@ -27,12 +27,14 @@ setwd("C://KDale/Projects/Phenology/")
 speciesInfo <- read_xlsx(path = "Data/species_of_interest.xlsx", sheet = 1)
 speciesNames <- as.vector(speciesInfo$scientific_name)
 
-colors = c("IMECOCAL" = "firebrick3", "CalCOFI" = "coral3", "RREAS" = "darkgoldenrod2", "PRS_juveniles" = "darkseagreen3", "PRS_larvae" = "cornflowerblue", "NH-Line" = "deepskyblue3", "Canada" =  "darkslateblue", "EcoFOCI" = "darkslategray")
+colors = c("IMECOCAL" = "firebrick4", "CalCOFI" = "coral2", "RREAS" = "darkgoldenrod1", "PRS_juveniles" = "darkseagreen2", "PRS_larvae" = "cornflowerblue", "NH-Line" = "lightblue1", "Canada" =  "mediumpurple3", "EcoFOCI" = "darkslategray")
 regionColors = c("Southern CCE" = "firebrick3", "Central CCE" = "darkgoldenrod2", "OR/WA" ="darkseagreen3","British Columbia" ="cornflowerblue", "British Columbia" = "darkslateblue","Gulf of Alaska" ="darkslategray")
 
 # Load North America shapefile
 northAmerica <- st_read("C://KDale/GIS/North_South_America.shp") %>%
   st_union() %>% st_make_valid()
+gulfOfCalifornia <- st_read("C://KDale/GIS/World_Seas_IHO_v3/World_Seas_IHO_v3.shp") %>% 
+  subset(MRGID == 4314) %>% dplyr::select(., geometry)
 
 # ERDDAP function ---------------------------------------------------------------
 getERDDAP <- function(name) {
@@ -150,10 +152,10 @@ getrreas <- function() {
   
   # Catch data
   rreas <- getERDDAP(name = "FED_Rockfish_Catch") %>% 
-    subset(species_group == "Clupeoid" | species_group == "Cottid" | species_group == "Deep-Sea Smelt" |
-             species_group == "Fish" | species_group == "Flatfish" | species_group == "Myctophid" | species_group == "Other Groundfish"|
-             species_group == "Rockfish" | species_group == "Salmonid" | species_group == "Smelt") %>% 
-    mutate(., .before = 1, program = "RREAS") %>% 
+    # subset(species_group == "Clupeoid" | species_group == "Cottid" | species_group == "Deep-Sea Smelt" |
+    #          species_group == "Fish" | species_group == "Flatfish" | species_group == "Myctophid" | species_group == "Other Groundfish"|
+    #          species_group == "Rockfish" | species_group == "Salmonid" | species_group == "Smelt") %>% 
+    # mutate(., .before = 1, program = "RREAS") %>% 
     rename(., tow_number = haul_no, scientific_name = sci_name, larvae_count = catch) %>% 
     mutate(., across(c(latitude, longitude, bottom_depth), as.numeric) , across(c(station), as.character), day_night = "N") %>%   # all tows in RREAS occur at night
     mutate(., gear = "Cobb MWT", gearGeneral = "Cobb MWT") # all sampling is via a cobb midwater trawl
@@ -327,8 +329,7 @@ getCanada <- function() {
   canada <- rename(canada, time = stn_time, volume_sampled_m3 = 'volume filtered(m3)', latitude = lat, longitude = lon, scientific_name = name, bottom_depth = 'bottom depth(m)', day_night = twilight, gear = net_type, depth_strata = depth_strt1, larvae_m3 = 'abundance(#/m3)', phylum = 'phylum:', class = 'class:', order = 'order:', family = 'family:') %>% 
     mutate(., .after = "date", year = year(date), month = month(date), day = day(date)) %>% 
     mutate(., day_night = replace(day_night, day_night == "Daylight", "D") , day_night = replace(day_night, day_night == "Night", "N")) %>% 
-    separate(., col = key, sep = 10, into = c("cruise", "tow_key")) %>% 
-    separate(., col = scientific_name, into = c("genus", "species", "maturity"), sep = c(" ", " ", " "), extra = "merge") %>% 
+    separate_wider_delim(., cols = scientific_name, names = c("genus", "species", "maturity"), delim = " ", too_many = "merge", cols_remove = F) %>% 
     mutate(., species = replace(species, species == "*sp.", NA)) %>% 
     unite(., col = scientific_name, genus, species, na.rm = TRUE, sep  = " ") %>% 
     mutate(., across(c(latitude, longitude, volume_sampled_m3, depth_strata, bottom_depth, depth_end1), as.numeric) , across(c(time), as.character)) %>% 
@@ -336,6 +337,7 @@ getCanada <- function() {
     mutate(., .before = 1, program = "Canada") %>% 
     mutate(., .after = gear, gearGeneral = "Bongo/Ring")
   
+
   write.csv(x = canada, file = "Data/Canada.csv", row.names = FALSE)
   
   return(canada)
@@ -359,21 +361,45 @@ getEcoFOCI <- function() {
   return(ecofoci)
 }
 # GET TOWS ---------------------------------------------------------------------
-getTows <- function(all_data_eez) {
+getTows <- function(samples) {
   
-  # calcofi_tows <- getERDDAP(name = "erdCalCOFItows") %>%
-  #   mutate(across(c(latitude, longitude), as.numeric)) %>%
-  #   mutate(., .before = 1, program = "CalCOFI", across(c(percent_sorted, latitude, longitude), as.numeric)) %>%
-  #   rename(gear = net_type) %>%
-  #   group_by_at(., c("program", "date", "line", "station", "gear")) %>%
-  #   summarize(latitude = max(latitude), longitude = max(longitude), total_larvae = sum(total_larvae), larvae_10m2 = total_larvae * standard_haul_factor * percent_sorted) %>%
-  #   ungroup(.) %>%
-  #   mutate(.,  across(c("line", "station"), as.character))
+  calcofi_tows <- getERDDAP(name = "erdCalCOFItows") %>%
+    mutate(across(c(latitude, longitude), as.numeric)) %>%
+    mutate(., .before = 1, program = "CalCOFI", across(c(percent_sorted, latitude, longitude), as.numeric)) %>%
+    rename(gear = net_type) %>% 
+    subset(., gear != "CV" & gear != "PV") %>% # Remove egg tow nets
+    mutate(.,  across(c("line", "station"), as.character), program = "CalCOFI", gearGeneral = ifelse(gear == "MT", yes = "Manta", no = "Bongo/Ring"))
   
   # rreas_tows <- group_by_at(rreas, c("program", "date", "station", "gear")) %>%
-  #   subset(., !is.na(larvae_count)) %>% summarize(., latitude = max(latitude), longitude = max(longitude), total_larvae = sum(larvae_count))
+  #    summarize(., latitude = max(latitude), longitude = max(longitude), total_larvae = sum(larvae_count))
+
+  canada_tows <- read_xlsx("Data/OriginalDatasets/Canada.xlsx", sheet = "Station Headers")
+  colnames(canada_tows) = tolower(colnames(canada_tows))
+  canada_tows <- rename(canada_tows, latitude = lat, longitude = long) %>% 
+    rename(., bottom_depth = 'max_depth1', day_night = twilight, gear = net_type, depth_strata = depth_strt1) %>% 
+    separate_wider_position(., cols = key, widths = c(10, "tow_key" = 10), too_few =  "align_start" ) %>% 
+    mutate(., across(c(latitude, longitude, depth_strata, bottom_depth), as.numeric)) %>% 
+    mutate(., .before = 1, program = "Canada") %>% 
+    mutate(., .after = gear, gearGeneral = "Bongo/Ring")
   
-  all_tows <- group_by_at(all_data_eez, c("towID", "program", "date", "latitude", "longitude", "year", "month", "day", "gear", "gearGeneral")) %>% 
+  canada_combined <- merge(canada_tows, canada[c("cruise", "tow_key", "latitude", "longitude", "day", "month", "year")], all = T) %>% 
+    mutate(., towID = paste(
+      program,
+      cruise,
+      date,
+      station,
+      gearGeneral,
+      tow_key,
+      sep = "_")) %>% 
+    distinct(., towID, .keep_all = T)
+  
+  # For cruises without "line" or "tow_number" or "tow_key" columns, remove NAs in the towID
+  canada_combined$towID = gsub(pattern = "_NA_", replacement = "_", x = canada_combined$towID)
+  canada_combined$towID = gsub(pattern = "_NA", replacement = "", x = canada_combined$towID)
+  
+  all_tows <- subset(samples, program != "CalCOFI" & program != "Canada") %>% 
+    bind_rows(., canada_combined, calcofi_tows) %>% 
+    group_by_at(., c("towID", "program", "date", "latitude", "longitude", "year", "month", "day", "gear", "gearGeneral")) %>% 
     summarize(
       surface_temp_oC = mean(surface_temp_oC),
       surface_sal_psu = mean(surface_sal_psu),
@@ -382,25 +408,11 @@ getTows <- function(all_data_eez) {
       fluor_volt = mean(fluor_volt),
       density_kg_m3 = mean(density_kg_m3),
       trans_percent = mean(trans_percent)) %>% 
-    mutate(day_of_year = yday(date)) %>% 
-    subset(., !is.na(latitude))
+    subset(., !is.na(latitude)) 
   
-  all_tows$region = NA
-  for (i in 1:nrow(all_tows)) {
-    latitude = all_tows$latitude[i] 
-    
-    if(latitude < 34.5) {
-      all_tows$region[i] = "Southern CCE"
-    } else if (latitude < 42 ) {
-      all_tows$region[i] = "Central CCE"
-    } else if (latitude < 48.3) {
-      all_tows$region[i] = "OR/WA"
-    } else if (latitude < 54.4) {
-      all_tows$region[i] = "British Columbia"
-    } else {
-      all_tows$region[i] = "Gulf of Alaska"
-    } 
-  }
+  all_tows$date = as.POSIXct(all_tows$date, format = "%m/%d/%Y")
+  all_tows$day_of_year = yday(all_tows$date)
+  
   write.csv(x = all_tows, file = "Data/AllTows.csv", row.names = FALSE)
   
   return(all_tows)
@@ -410,13 +422,14 @@ getTows <- function(all_data_eez) {
 selectWithinEEZ <- function(data) {
   
   # Load EEZ shapefile
-  eez <- read_sf("C://KDale/GIS/NorthAmerica_EEZ.shp")
+  eez <- read_sf("C://KDale/GIS/NorthAmerica_EEZ.shp") %>% st_buffer(., dist = 100000)
   
   # Subset tows to within 200 km of land (EEZ)
   data_sf <- subset(data, !is.na(latitude)) %>% st_as_sf(., coords = c("longitude", "latitude"), remove = FALSE)
   data_sf$program = factor(data_sf$program, levels = c("CalCOFI","IMECOCAL","RREAS","PRS_juveniles","PRS_larvae", "NH-Line","Canada", "EcoFOCI"))
   st_crs(data_sf) <- st_crs(eez)
-  eez_data <- st_intersection(data_sf, eez) 
+  eez_data <- st_intersection(data_sf, eez)
+  eez_data <- subset(eez_data, latitude > 23)
   
   return(eez_data)
   
@@ -425,21 +438,52 @@ selectWithinEEZ <- function(data) {
 # MAKE MAP ----------------------------------------------------------------------
 createMap <- function(data) { 
   
-  data = st_as_sf(data, coords = c("longitude", "latitude"))
+  data = data %>% subset(., year >= 1995 & year <= 2019) %>% 
+    subset(., !is.na(latitude) & !is.na(longitude)) %>% 
+    subset(., program != "RREAS" & program != "PRS_juveniles") %>% 
+    st_as_sf(., coords = c("longitude", "latitude"))
+  
   st_crs(data) = st_crs(northAmerica)
   
-  data$program = factor(data$program, levels = c("EcoFOCI", "Canada", "PRS_larvae", "PRS_juveniles", "NH-Line", "RREAS", "CalCOFI", "IMECOCAL" ))
+  data$program = factor(data$program, levels = c("CalCOFI",  "Canada","PRS_larvae", "PRS_juveniles", "NH-Line", "RREAS",  "IMECOCAL", "EcoFOCI"))
+  nhline <- subset(data, program == "NH-Line")
+  canada <- subset(data, program == "Canada")
+  calcofi <- subset(data, program == "CalCOFI")
   
-  pdf("Figures/Stations_AllPrograms.pdf", width = 8, height = 8)
-  #jpeg("Figures/All_samples.jpg",units = "in", width = 8, height = 8, res = 200)
+  jpeg("Figures/All_tows.jpg",units = "in", width = 8, height = 8, res = 500)
   print(ggplot() +
-          geom_sf(data = data, mapping = aes(color = program), alpha = 0.5) +
+          geom_sf(data = calcofi, mapping = aes(color = program), alpha = 0.3) +
+          geom_sf(data = subset(data, program != "CalCOFI" & program != "Canada" & program != "NH-Line"), mapping = aes(color = program), alpha = 0.3) +
+          geom_sf(data = nhline, mapping = aes(color = program), alpha = 0.3) +
+          geom_sf(data = canada, mapping = aes(color = program), alpha = 0.5) +
+          geom_sf(data = northAmerica) +
+          coord_sf(expand = FALSE) +
+          scale_color_manual("Program", values = colors) +
+          coord_sf(xlim = c(-165, -106), ylim = c(19,61)) +
+          theme_bw(base_size = 14))
+  dev.off()
+  
+  jpeg("Figures/Stations_All_tows_Legend.jpg", width = 8, height = 8, res = 400, units = "in")
+  print(ggplot() +
+          geom_sf(data = data, mapping = aes(color = program), alpha = 1) +
+          geom_sf(data = nhline, mapping = aes(color = program), alpha = 1) +
           geom_sf(data = northAmerica) +
           coord_sf(expand = FALSE) +
           scale_color_manual("Program", values = colors) +
           coord_sf(xlim = c(-170, -105), ylim = c(18,61)) +
           theme_bw(base_size = 14))
   dev.off()
+  
+  jpeg("Figures/Stations_Canada.jpg", width = 8, height = 8, res = 400, units = "in")
+  print(ggplot() +
+          geom_sf(data = subset(data, program == "Canada"), mapping = aes(color = program), alpha = 1) +
+          geom_sf(data = northAmerica) +
+          coord_sf(expand = FALSE) +
+          scale_color_manual("Program", values = colors) +
+          coord_sf(xlim = c(-170, -105), ylim = c(18,61)) +
+          theme_bw(base_size = 14))
+  dev.off()
+  
 }
 
 # CREATE SPECIES TABLE ---------------------------------------------------------
@@ -491,16 +535,16 @@ nhline <- getNHLine()
 canada <- getCanada()
 ecofoci <- getEcoFOCI()
 
-# Alternatively, import already-cleaned CSV versions (use mutate/across to assign correct data types)
+## Load datasets --------
+# As an alternative to the above, import already-cleaned CSV versions (use mutate/across to assign correct data types)
 imecocal <- read.csv("Data/IMECOCAL.csv") %>% mutate(., across(date, as.Date)) %>% mutate(., across(c(cruise, line, station), as.character))
 calcofi <- read.csv("Data/CalCOFI.csv") %>% mutate(., across("date", as.Date)) %>% mutate(., across(c("cruise", "line", "station"), as.character))
 rreas <- read.csv("Data/RREAS.csv") %>% mutate(., across("date", as.Date)) %>% mutate(., across(c("cruise", "station"), as.character))
 prerecruit <- read.csv("Data/Prerecruit_full.csv") %>% mutate(., across("date", as.Date)) %>% mutate(., across(c("line", "station"), as.character))
 nhline <- read.csv("Data/NHLine.csv") %>% mutate(., across("date", as.Date)) %>% mutate(., across("station", as.character))
 canada <- read.csv("Data/canada.csv") %>% mutate(., across("date", as.Date))
-ecofoci <- read.csv("Data/ecofoci.csv") %>% mutate(., across("date", as.Date)) %>% mutate(., across("gear", as.character))
-
-
+ecofoci <- read.csv("Data/ecofoci.csv") %>%  mutate(., across("gear", as.character))
+ecofoci$date = as.Date(ecofoci$date, format = c("%m/%d/%Y"))
 
 ## Combine datasets, select relevant columns, add unique tow ID -----
 all_data <- bind_rows(list(imecocal, calcofi, rreas, prerecruit, nhline, canada, ecofoci)) %>%
@@ -515,7 +559,7 @@ all_data <- bind_rows(list(imecocal, calcofi, rreas, prerecruit, nhline, canada,
     date,
     line,
     station,
-    gear,
+    gearGeneral,
     tow_number,
     tow_key,
     sep = "_"))
@@ -524,12 +568,20 @@ all_data <- bind_rows(list(imecocal, calcofi, rreas, prerecruit, nhline, canada,
 all_data$towID = gsub(pattern = "_NA_", replacement = "_", x = all_data$towID)
 all_data$towID = gsub(pattern = "_NA", replacement = "", x = all_data$towID)
 
-## Get tows and select within 200nm EEZ ----
+## Select positive samples within 300nm, remove Gulf of CA -----
+all_data_eez <- selectWithinEEZ(all_data) %>%
+  st_difference(., gulfOfCalifornia) %>% 
+  st_drop_geometry(.) %>% 
+  subset(., larvae_count > 0 | larvae_10m2 > 0 | larvae_m3 > 0 | larvae_1000m3 > 0) %>% 
+  mutate(., .after = day, day_of_year = yday(date)) # Add a day of the year column
+
+## Get tows -----
 all_tows <- getTows(all_data)
 
-## Add ROMS data to tows --
+## Link ROMS to tows, subset data ------
 source("Analysis/Code/linkRoms.R")
 all_tows_roms <- selectWithinEEZ(all_tows) %>%
+  st_difference(., gulfOfCalifornia) %>% 
   mutate(., distance_from_shore_m = as.vector(st_distance(., northAmerica)[,1])) %>% 
   mutate(., distance_from_shore_scaled = scale(distance_from_shore_m)[,1]) %>% 
   st_drop_geometry(.) %>% 
@@ -537,15 +589,9 @@ all_tows_roms <- selectWithinEEZ(all_tows) %>%
   mutate(daylength = geosphere::daylength(lat = latitude, doy = day_of_year)) # daylength
 
 # Get bathymetry data
-bathy <- getNOAA.bathy(lon1 = -170, lon2 = -109, lat1 = 20, lat2 = 62, resolution = 4)
+bathy <- getNOAA.bathy(lon1 = -180, lon2 = -100, lat1 = 15, lat2 = 70, resolution = 4)
 all_tows_roms$bottom_depth <- get.depth(bathy, x = all_tows_roms$longitude, y = all_tows_roms$latitude, locator = FALSE)$depth
 all_tows_roms$bottom_depth_scaled <- scale(all_tows_roms$bottom_depth)[,1]
-
-## Select within 200nm EEZ and select only positive tows -----
-## Create one column of catch anomalies
-all_data_eez <- selectWithinEEZ(all_data) %>% st_drop_geometry(.) %>% 
-  subset(., larvae_count > 0 | larvae_10m2 > 0 | larvae_m3 > 0 | larvae_1000m3 > 0) %>% 
-  mutate(., .after = day, day_of_year = yday(date)) # Add a day of the year column
 
 ## Write data -----
 write.csv(all_data, file = "Data/AllCruises_Combined.csv")
@@ -559,8 +605,10 @@ all_data_eez <- read.csv(file = "Data/AllCruises_Combined_200nm.csv")
 all_tows <- read.csv(file = "Data/AllTows.csv")
 all_tows_roms <- read.csv(file = "Data/AllTows_200nm.csv")
 
-## Species table & map ----
+## Species table ----
 speciesTable = createSpeciesTable(all_data_eez)
+
+## Map of all tows ----
 createMap(data = all_tows_roms)
 
 # SPATIAL OPERATIONS ----------------------------------------------------------

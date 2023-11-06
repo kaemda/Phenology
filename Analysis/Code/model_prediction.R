@@ -64,7 +64,7 @@ calculateCenterOfGravity <- function(p, species) {
   
   # Center of gravity per year in relation to environmental variables
   years = unique(p$year)
-  cog.year = data.frame(matrix(ncol = 0, nrow = length(years)), year = NA, cog.lat = NA, cog.month = NA, avgsst = NA, avgssh = NA, avgsal= NA, avgbd = NA, avgdfs = NA, avgspice = NA)
+  cog.year = data.frame(matrix(ncol = 0, nrow = length(years)), year = NA, cog.lat = NA, cog.month = NA, avgsst = NA, avgssh = NA, avgsal= NA, avgdfs = NA, avgspice = NA)
   
   for (i in 1:length(years)) {
     yearSubset = subset(p, year == years[i])
@@ -73,8 +73,6 @@ calculateCenterOfGravity <- function(p, species) {
     cog.year$avgsst[i] = mean(yearSubset$sst_roms)
     cog.year$avgssh[i] = mean(yearSubset$ssh_roms)
     cog.year$avgsal[i] = mean(yearSubset$salinity_roms)
-    cog.year$avgdfs[i] = mean(yearSubset$distance_from_shore_m)
-    cog.year$avgbd[i] = mean(yearSubset$bottom_depth)
     cog.year$avgspice[i] = mean(yearSubset$spice)
     cog.year$year[i] = years[i]
     cog.year$species[i] = species
@@ -195,8 +193,21 @@ centralTendency_figures <- function(response, species, modelType) {
 } 
 
 #------------------------------------------------------------------------------#
-# CT MULTISPECIES -----------
-centralTendencyMultiSpecies <- function(speciesList, modelTypes) {
+centralTendencyMultiSpecies <- function(lifeHistory) {
+  
+  tradeoffSubset = subset(tradeoffs, life_history == lifeHistories[i])
+  speciesList = tradeoffSubset$scientific_name
+  fileNames = tradeoffSubset$file_name
+  
+  if (lifeHistory == "Coastal pelagic") {
+    multispeciesColors = coastalPelagicColors
+  } else if (lifeHistory == "Mesopelagic") {
+    multispeciesColors = mesopelagicColors
+  } else if (lifeHistory == "Groundfish") {
+    multispeciesColors = groundfishColors
+  } else {
+    multispeciesColors = lifeHistoryColors
+  }
   
   cog.all = data.frame(year = integer(), cog.lat = double(), cog.month = double(), avgsst = double(), avgssh = double(), avgsal = double(), avgspice = double())
   lms.all <- data.frame(y = character(), x = character(), p = double(), slope = double(), R2 = double(), species = character()) # create dataframe to hold lm results
@@ -204,7 +215,7 @@ centralTendencyMultiSpecies <- function(speciesList, modelTypes) {
   for (s in 1:length(speciesList)) {
     
     # Load prediction object for each species
-    predictionObjectName = paste0("Results/", speciesList[s], "/Models/prediction_objects_", modelTypes[s], ".rdata")
+    predictionObjectName = paste0("Results/", speciesList[s], "/Models/prediction_objects_", fileNames[s], ".rdata")
     load(predictionObjectName)
     
     # Calculate cog for each species; add species
@@ -237,21 +248,18 @@ centralTendencyMultiSpecies <- function(speciesList, modelTypes) {
   }
   
   cog.all.long <- pivot_longer(cog.all, names_to = "y", cols = c("cog.month", "cog.lat"), values_to = "cog") %>% 
-    pivot_longer(., names_to = "x", cols = c("avgsal", "avgssh", "avgsst", "avgspice"), values_to = "average")
+    pivot_longer(., names_to = "x", cols = c("avgsal", "avgssh", "avgsst"), values_to = "average")
   
   cog.all.long <- merge(cog.all.long, lms.all)
-
-  cog.all <- pivot_wider(cog.all.long, names_from = y, values_from = p, names_prefix = "p_")
   
-  pdf(paste0("Figures/Multispecies_COG_month_vs_latitude_.pdf"), width = 9, height = 7)
+  pdf(paste0("Figures/Multispecies/Multispecies_", lifeHistory, "_COG_month_vs_latitude_.pdf"), width = 10, height = 6)
   print(ggplot(data = subset(cog.all.long, p < 0.05), mapping = aes(x = average, y = cog, col = species, fill = species)) +
-    facet_grid(rows = vars(y), cols = vars(x), scales = "free", switch = "y") +
-    geom_point() +
-    geom_smooth(method = "lm") +
-    scale_fill_manual(values = multispeciesColors) +
-    scale_color_manual(values = multispeciesColors))
+          facet_grid(y ~ x, scales = "free", switch = "y") +
+          geom_point() +
+          geom_smooth(method = "lm") +
+          scale_fill_manual(lifeHistory, values = multispeciesColors) +
+          scale_color_manual(lifeHistory, values = multispeciesColors))
   dev.off()
-  
   
   # # Plot
   # plotlist <- list()
@@ -331,17 +339,14 @@ empiricalData <- function(response, species) {
           labs(x = "Longitude", y = "Latitude") +
           ggtitle(bquote(~italic(.(species)))))
   dev.off()
-  
 }
 
 # FIG #: PREDICTED -------------------------------------------------------------
 predictedData <- function(response, species, modelType) {
   
+  
   # Predicted catch across months (map)
   predictedCatch.grid.month <- predictedCatch.grid %>% group_by_at(., c("gridid", "X", "Y", "month")) %>% 
-    summarize(., mean_est = mean(mean_est))
-  
-  predictedCatch.grid.timeblock <- predictedCatch.grid %>% group_by_at(., c("gridid", "X", "Y", "timeblock")) %>% 
     summarize(., mean_est = mean(mean_est))
   
   # Predicted catch abundance for each month, across all years
@@ -379,12 +384,27 @@ predictedData <- function(response, species, modelType) {
     ungroup() %>% group_by_at(c("X", "Y", "timeblock")) %>% 
     summarize(est_retransform = mean(est_retransform)) # average across each lat/lon/timeblock combination
   
-  # Prediction on original stations
+}
+# EMPIRCAL VS PREDICTED --------------------------------------------------------
+empiricalVsPredicted <- function(species, model) {
+  
+  northAmerica <- read_sf("C://KDale/GIS/North_South_America.shp") %>% st_union()
+  
+  # Plot scatterplot of empirical vs predicted data (only on original stations)
+    pdf(file = paste0("Figures/", species, "/Empirical_vs_predicted_", modelType, ".pdf"), width = 4, height = 3)
+    print(ggplot(p.original, aes(x = logN1, y = est_retransform)) +
+            geom_point(alpha = 0.5, pch = 16, size = 1, color = "gray40") +
+            geom_smooth(method = "lm", fill = "black", color = "black") +
+            coord_cartesian(expand = F, ylim = c(0,max(p.original$est_retransform)+0.1), xlim = c(0, max(p.original$logN1)+0.15)) +
+            geom_abline(slope = 1, intercept = 0, lty = 2, linewidth = 1, color = "black") +
+            labs(x = "Empirical abundance [log(N+1)]", y = "Predicted abundance [log(N+1)]"))
+  dev.off()
+  
+  # Prediction on original stations (per timeblock)
   pdf(file = paste0("Figures/", species, "/Predicted_original", modelType,".pdf"), width = 7, height = 4)
   print(ggplot(northAmerica) +
-          facet_wrap(~timeblock, nrow = 1) +
-          geom_point(data = subset(p.original, logN1 < 0.001), aes(X*1000, Y*1000), col = "gray80", size = 0.2, pch = 20, alpha = 0.5, inherit.aes = FALSE) +
-          geom_point(data = subset(p.original, logN1 > 0.001), aes(X*1000, Y*1000, col = logN1), size = 1.5, alpha = 1, pch = 20, inherit.aes = FALSE) +
+          geom_point(data = subset(predictedCatch.grid.original, mean_est < 0.001), aes(X*1000, Y*1000), col = "gray80", size = 0.2, pch = 20, alpha = 0.5, inherit.aes = FALSE) +
+          geom_point(data = subset(predictedCatch.grid.original, mean_est > 0.001), aes(X*1000, Y*1000, col = mean_est), size = 1.5, alpha = 1, pch = 20, inherit.aes = FALSE) +
           geom_sf(fill = "gray20") +
           scale_color_gradient(response, low = "lightgoldenrod2", high =  "firebrick4") +
           xlim(min(data$X)*1000-1000, max(data$X)*1000+1000) +
@@ -394,26 +414,69 @@ predictedData <- function(response, species, modelType) {
           theme(axis.text.x = element_text(angle = 60,hjust=1)) +
           labs(x = "Longitude", y = "Latitude"))
   dev.off()
+
+  # Prediction on original stations (overall)
   
-  # Plot empirical vs predicted data (only on original stations)
-  if (response == "logN1") {
-    pdf(file = paste0("Figures/", species, "/Empirical_vs_predicted_", modelType, ".pdf"), width = 4, height = 3)
-    print(ggplot(p.original, aes(x = logN1, y = est_retransform)) +
-            geom_point() +
-            geom_smooth(method = "lm", fill = "gray50", color = "gray50") +
-            geom_abline(slope = 1, intercept = 0, lty = 2, color = "black") +
-            labs(x = "Empirical abundance (log(N+1))", y = "Predicted abundance (log(N+1))"))
-    dev.off()
-  } else if (response == "presence") {
-    pdf(file = paste0("Figures/", species, "/Empirical_vs_predicted_", modelType, ".pdf"), width = 4, height = 3)
-    print(ggplot(p.original) +
-            geom_boxplot(aes(x = as.factor(presence), y = est_retransform)) +
-            labs(x = "Empirical presence", y = "Predicted presence"))
-    dev.off()
-  }
+  # Get species dataset, cast to a spatial object
+  data.sf <- st_as_sf(data, coords = c("longitude", "latitude")) %>%
+    st_set_crs(4326)  # WGS 84 - geographic reference system
   
+  studyArea <-
+    st_convex_hull(data.sf) %>%
+    st_make_valid() %>%
+    st_difference(., northAmerica)
   
+  hex <- st_make_grid(studyArea, crs = 4326, what = "polygons", square = FALSE, cellsize = 10000) %>%
+    st_difference(., northAmerica) %>% 
+    st_sf(.) %>% 
+    mutate(grid_id = seq(1:nrow(.))) %>% 
+    st_make_valid() %>% 
+    st_cast("POLYGON")
+  
+# Predicted catch on original stations overall
+  predictedCatch.grid.original <- p.original %>%
+    st_as_sf(., coords = c("longitude", "latitude")) %>% 
+    st_set_crs(st_crs(northAmerica))
+  
+  hex.predict <- st_join(hex, predictedCatch.grid.original) %>% 
+    group_by_at(., c("grid_id")) %>%
+    dplyr::summarize(., mean_est = mean(est_retransform))
+  
+  hex.empirical <- st_join(hex, data.sf) %>% 
+    group_by_at(., c("grid_id")) %>%
+    dplyr::summarize(., mean_logN1 = mean(logN1))
+  
+  # Overall map comparison
+  p1 <- ggplot() +
+    geom_sf(data = northAmerica, fill = "gray20") +
+    geom_sf(data = hex.empirical, mapping = aes(fill = mean_logN1)) + 
+    scale_fill_gradient("Average abundance\n[log(N+1)]", na.value = "white", low = "lightgoldenrod2", high = "firebrick4") +
+    xlim(min(data$longitude, na.rm = T), max(data$longitude, na.rm = T)) +
+    ylim(min(data$latitude, na.rm = T), max(data$latitude, na.rm = T)) +
+    theme_classic(base_size = 12) +
+    theme(axis.text.x = element_text(angle = 60,hjust=1)) +
+    labs(x = "Longitude", y = "Latitude") +
+    ggtitle("Empirical")
+  
+  p2 <- ggplot() +
+          # geom_point(data = subset(p.original, logN1 < 0.001), aes(X*1000, Y*1000), col = "gray80", size = 0.2, pch = 20, alpha = 0.5, inherit.aes = FALSE) +
+          # geom_point(data = subset(p.original, logN1 > 0.001), aes(X*1000, Y*1000, col = logN1), size = 1.5, alpha = 1, pch = 20, inherit.aes = FALSE) +
+          geom_sf(data = northAmerica, fill = "gray20") +
+          geom_sf(data = hex.predict, mapping = aes(fill = mean_est)) + 
+          scale_fill_gradient("Average abundance\n[log(N+1)]", na.value = "white", low = "lightgoldenrod2", high =  "firebrick4") +
+          xlim(min(data$longitude), max(data$longitude)) +
+          ylim(min(data$latitude), max(data$latitude)) +
+          theme(axis.text.x = element_text(angle = 60,hjust=1))+
+          theme_classic(base_size = 12) +
+          theme(axis.text.x = element_text(angle = 60,hjust=1)) +
+          labs(x = "Longitude", y = "Latitude") +
+          ggtitle("Predicted")
+
+  jpeg(paste0("Figures/", species,"/", species, "Empirical_Predicted_OVerall.jpg"), width = 10, height = 5, units = "in", res = 500)
+  print(cowplot::plot_grid(p1, p2, nrow = 1, align = "both"))
+  dev.off()
 }
+
 
 # PREDICTIVE PERFORMANCE -------------------------------------------------------
 
@@ -756,19 +819,19 @@ quotientCurves <- function(species, modelType) {
 }
 # NICHE BREADTH ----------------------------------------------------------------------------------------------
 
-calculateNicheBreadth <- function(species, modelType) {
+calculateNicheBreadth <- function(species, fileName, lifeHistory) {
   
-  predictionObjectName = paste0("Results/", species, "/Models/prediction_objects_", modelType, ".rdata")
+  predictionObjectName = paste0("Results/", species, "/Models/prediction_objects_", fileName, ".rdata")
   if(!file.exists(predictionObjectName)) {
-    createPredictionObjects(species = species, modelType = modelType, makeNewGrid = F, makeNewPrediction = T)
+    createPredictionObjects(species = species, modelType = fileName, makeNewGrid = F, makeNewPrediction = T)
   } 
   
   load(predictionObjectName)
   
-  variables = c("sst_roms", "ssh_roms", "salinity_roms", "bottom_depth", "distance_from_shore_m")
-  xaxisLabels = c("Sea surface \ntemperature (\u00b0C)", "Sea surface \nheight (m)", "Salinity (ppt)", "Bottom \ndepth (m)", "Distance from \nshore (m)")
+  variables = c("sst_roms", "ssh_roms", "salinity_roms", "bottom_depth")
+  xaxisLabels = c("Sea surface \ntemperature (\u00b0C)", "Sea surface \nheight (m)", "Salinity (ppt)", "Bottom \ndepth (m)")
   
-  nicheBreadth = data.frame(species = species, variableNames = xaxisLabels, variable = variables, hurlbert = NA, smith = NA, smith.lower = NA, smith.upper = NA)
+  nicheBreadth = data.frame(species = species, lifeHistory = lifeHistory, variableNames = xaxisLabels, variable = variables, hurlbert = NA, smith = NA, smith.lower = NA, smith.upper = NA)
   
   for(i in 1:length(variables)) { 
     
@@ -805,23 +868,26 @@ calculateNicheBreadth <- function(species, modelType) {
           theme_classic(base_size = 14) +
           geom_errorbar(aes(x = variableNames, ymin = smith.lower, ymax = smith.upper), width = 0.2, linewidth = 1.5))
   
-  write.csv(nicheBreadth, file = paste0("Results/", species, "/", species, "_", modelType,  "nicheBreadth.csv"))
+  write.csv(nicheBreadth, file = paste0("Results/", species, "/", species, "_", fileName,  "nicheBreadth.csv"))
   
 }
 
 
 # NICHE BREADTH MULTISPECIES -------------------------------------------------------------------------------#
-nicheBreadthMultiSpecies <- function(speciesList, modelTypes) {
+nicheBreadthMultiSpecies <- function(tradeoffs, recalculate) {
+  
+  speciesList = tradeoffs$scientific_name
+  fileNames = tradeoffs$file_name
+  lifeHistories = tradeoffs$life_history
   
   nicheBreadthCombined = NA
-  recalculate = T
   
   for (i in 1:length(speciesList)) {
     
     # Load in niche breadth csv (or create new one)
-    file = paste0("Results/", speciesList[i], "/", speciesList[i], "_", modelTypes[i],  "nicheBreadth.csv")
+    file = paste0("Results/", speciesList[i], "/", speciesList[i], "_", fileNames[i],  "nicheBreadth.csv")
     if(!file.exists(file) | recalculate == T) {
-      calculateNicheBreadth(speciesList[i], modelTypes[i])
+      calculateNicheBreadth(species = speciesList[i], fileName = fileNames[i], lifeHistory = lifeHistories[i])
     } 
     nicheBreadth = read.csv(file)
     
@@ -834,16 +900,44 @@ nicheBreadthMultiSpecies <- function(speciesList, modelTypes) {
     
   }
   
+  lifeHistoryCategories = c("Coastal pelagic", "Mesopelagic", "Groundfish")
+  plotlist <- list()
+  
   # Plot niche breadth
-  pdf("Figures/Multispecies_NicheBreadth.pdf", width = 6, height = 6)
-  print(ggplot(nicheBreadthCombined) +
-          geom_point(aes(x = variableNames, y = smith, color = species), size = 4) +
-          geom_errorbar(aes(x = variableNames, ymin = smith.lower, ymax = smith.upper, color = species), width = 0.2, linewidth = 1.5) +
-          labs(x = "Environmental covariate", y = "Smith's measure") +
-          theme_classic(base_size = 14) +
-          theme(legend.position = c(1,0.2), legend.justification = "right") +
-          scale_color_manual("Species", values = multispeciesColors))
+  for (i in 1:length(lifeHistoryCategories)) {
+    
+    lifeHistoryChoice = lifeHistoryCategories[i]
+    
+    if (lifeHistoryChoice == "Coastal pelagic") {
+      multispeciesColors = coastalPelagicColors
+    } else if (lifeHistoryChoice == "Mesopelagic") {
+      multispeciesColors = mesopelagicColors
+    } else if (lifeHistoryChoice == "Groundfish") {
+      multispeciesColors = groundfishColors
+    } else {
+      multispeciesColors = lifeHistoryColors
+    }
+    
+    subset = subset(nicheBreadthCombined, lifeHistory == lifeHistoryChoice)
+    
+    #pdf(paste0("Figures/Multispecies/", lifeHistoryChoice, "_NicheBreadth.pdf"), width = 4, height = 4)
+    plotlist[[i]] <- print(ggplot(subset) +
+            geom_point(aes(x = variableNames, y = smith, color = species), size = 3) +
+            geom_errorbar(aes(x = variableNames, ymin = smith.lower, ymax = smith.upper, color = species), width = 0.2, linewidth = 1.2) +
+            labs(x = "Environmental covariate", y = "Smith's measure") +
+            theme_classic(base_size = 16) +
+            theme(legend.position = "right", legend.justification = "left") +
+            scale_y_continuous(limits = c(0.4,1)) +
+            scale_color_manual(lifeHistoryCategories[i], values = multispeciesColors))
+    #dev.off()
+    
+  }
+  
+  
+  pdf(paste0("Figures/Multispecies/AllLifeHistories_NicheBreadth.pdf"), width = 27, height = 6)
+  cowplot::plot_grid(plotlist = plotlist, nrow = 1)
   dev.off()
+  
 }
 
 # PLOT MAPS ----------------------------------------------------------------------------
@@ -976,7 +1070,8 @@ cumulativeCatch <- function(species) {
     mutate(cum_catch = cumsum(mean_est_retransform))
   
   cumulativeAbundance <- predictedCatch.time.cumulative %>% 
-    summarize(fifteen = max(cum_catch)*0.15, fifty = max(cum_catch)*0.5, eightyfive = max(cum_catch)*0.85)
+    summarize(fifteen = max(cum_catch)*0.15, fifty = max(cum_catch)*0.5, eightyfive = max(cum_catch)*0.85) %>% 
+    mutate(fifteen.month = NA, eightyfive.month = NA, fifty.month = NA)
   
   timesteps = unique(cumulativeAbundance$year)
   
@@ -987,12 +1082,16 @@ cumulativeCatch <- function(species) {
     
     # Find month at which 15%, 50%, and 85% are passed
     fifteen.month = max(timeSubset$month[timeSubset$cum_catch < cumulativeAbundance$fifteen[i]])
-    slope = (timeSubset$cum_catch[fifteen.month]-timeSubset$cum_catch[fifteen.month-1])/(1) # differences between months are always 1
+    if(fifteen.month == -Inf) {
+      fifteen.month = 1
+    } 
+    
+    slope = (timeSubset$cum_catch[fifteen.month+1]-timeSubset$cum_catch[fifteen.month])/(1) # differences between months are always 1
     b = timeSubset$cum_catch[fifteen.month] - slope * fifteen.month #y-mx
     cumulativeAbundance$fifteen.month[i] = (cumulativeAbundance$fifteen[i] - b) / slope #y-b/m
     
     fifty.month = max(timeSubset$month[timeSubset$cum_catch < cumulativeAbundance$fifty[i]])
-    slope = (timeSubset$cum_catch[fifty.month]-timeSubset$cum_catch[fifty.month-1])/(1) # differences between months are always 1
+    slope = (timeSubset$cum_catch[fifty.month+1]-timeSubset$cum_catch[fifty.month])/(1) # differences between months are always 1
     b = timeSubset$cum_catch[fifty.month] - slope * fifty.month #y-mx
     cumulativeAbundance$fifty.month[i] = (cumulativeAbundance$fifty[i] - b) / slope #y-b/m
     
@@ -1000,18 +1099,19 @@ cumulativeCatch <- function(species) {
     slope = (timeSubset$cum_catch[eightyfive.month]-timeSubset$cum_catch[eightyfive.month-1])/(1) # differences between months are always 1
     b = timeSubset$cum_catch[eightyfive.month] - slope * eightyfive.month #y-mx
     cumulativeAbundance$eightyfive.month[i] = (cumulativeAbundance$eightyfive[i] - b) / slope #y-b/m
-    
   }
   
-  pdf(file = paste0("Figures/", species, "/", "Cumulative_Thresholds_.pdf"))
+  pdf(file = paste0("Figures/", species, "/", "Cumulative_Thresholds_.pdf"), width = 5, height = 5)
   print(ggplot(cumulativeAbundance) +
-          geom_errorbarh(mapping = aes(y = year, xmin = fifteen.month, xmax = eightyfive.month))+
-          geom_point(mapping = aes(y = year, x = fifty.month)) +
-          labs(x = "Month", y = "Year") +
-          scale_x_continuous(n.breaks = 12)+
+          geom_errorbar(mapping = aes(x = year, ymin = fifteen.month, ymax = eightyfive.month))+
+          geom_point(mapping = aes(x = year, y = fifty.month)) +
+          labs(y = "Month", x = "Year") +
+          scale_y_continuous(n.breaks = 13)+
           ggtitle(bquote(~italic(.(species)))) +
-          scale_y_continuous(n.breaks = length(timesteps)))
+          scale_x_continuous(n.breaks = length(timesteps)/2, labels = scales::number_format(accuracy = 1, big.mark = "")))
   dev.off()
+  
+  write.xlsx(x = cumulativeAbundance, file = paste0("Results/", species, "/", species, "_cumulativeAbundance.xlsx"))
 }
 # CREATE PREDICTION OBJECTS---------------------------------------------------------------
 createPredictionObjects <- function(species, modelType, makeNewGrid, makeNewPrediction) {
@@ -1069,16 +1169,41 @@ createPredictionObjects <- function(species, modelType, makeNewGrid, makeNewPred
   
 }
 
-
+# FIG # TRADEOFFS BAR PLOT -----------------------------------------------------------------
+tradeoffsBarPlot <- function(tradeoffs) {
+  
+  tradeoffs.summary <- tradeoffs %>%  
+    group_by_at(c("life_history", "model")) %>% 
+    summarize(n = sum(!is.na(chosen_model)))
+  
+  tradeoffs.summary$model <- factor(tradeoffs.summary$model, levels = c("base", "geo", "pheno", "both"))
+  
+  pdf(file = "Figures/Multispecies/Tradeoff_Summary.pdf", width = 6, height = 5)
+  print(ggplot(tradeoffs.summary) +
+          geom_col(aes(x = model, y = n, fill = life_history)) +
+          labs(x = "Model", y = "N species") +
+          theme_classic(base_size = 14) +
+          scale_x_discrete(labels = c("Base model", "Shifting\ngeography", "Shifting\nphenology", "Both")) +
+          coord_cartesian(expand = F) +
+          #theme(legend.position = c(0.05,0.8), legend.justification = "left") +
+          scale_fill_manual("Life history", values = lifeHistoryColors))
+  dev.off()
+}
 # RUN FUNCTIONS -------------------------------------------------------------------------
 
+## Set parameters ------------
 northAmerica <- read_sf("C://KDale/GIS/North_South_America.shp") %>% st_union() %>% st_transform(., crs = "EPSG:5070")
 programColors = c("IMECOCAL" = "firebrick3", "CalCOFI" = "coral3","RREAS" = "darkgoldenrod2", "PRS_juveniles" ="darkseagreen3","PRS_larvae" ="cornflowerblue", "NH-Line" ="deepskyblue3", "Canada" = "darkslateblue","EcoFOCI" ="darkslategray")
 regionColors = c("Southern CCE" = "firebrick3", "Central CCE" = "darkgoldenrod2", "OR/WA" ="darkseagreen3","British Columbia" ="cornflowerblue", "British Columbia" = "darkslateblue","Gulf of Alaska" ="darkslategray")
-multispeciesColors = c("tan3", "skyblue2","navy")
+lifeHistoryColors = c("Groundfish" = "tan3", "Coastal pelagic" = "skyblue2", "Mesopelagic" = "gray10")
+coastalPelagicColors = c("steelblue2", "dodgerblue3", "lightblue1")
+mesopelagicColors = c("gray10", "gray30", "gray50", "gray70")
+groundfishColors = c("tan2", "wheat2", "navajowhite3", "burlywood1", "brown", "tan3", "brown3")
+
 theme_set(theme_classic(base_size = 12))
 timeblocks <- read_xlsx("Data/timeblocks.xlsx", sheet = 1)
 
+# Tradeoffs data file
 tradeoffs <- read_xlsx("Results/Tradeoffs.xlsx", sheet = 1) %>% subset(., chosen_model == "x")
 
 # Mixed taxonomic models
@@ -1086,41 +1211,41 @@ speciesList = tradeoffs$scientific_name
 modelTypes = tradeoffs$file_name
 
 # Single species
-#speciesList = "Parophrys vetulus"
-#modelTypes = c("logN1_speciesRange_allPrograms_base_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)")
+speciesList = "Tarletonbeania crenularis"
+modelTypes = subset(tradeoffs, tradeoffs$scientific_name == speciesList)$file_name
 
-makeNewPrediction = T
+makeNewPrediction = F
 makeNewGrid = F
 
-# Create prediction objects-----
-  for (i in 1:length(modelTypes)) {
-    
-    # Set species and model
-    species = speciesList[i]
-    modelType = modelTypes[i]
-    
-    # Filenames
-    fitName = paste0("Results/", species, "/Models/", modelType, ".rdata")
-    predictionObjectName = paste0("Results/", species, "/Models/prediction_objects_", modelType, ".rdata")
-    gridFilename = paste0("Analysis/PredictionGrids/", species, "_grid.rdata")
-    
-    # Create prediction objects
-    if(!file.exists(predictionObjectName) | makeNewPrediction == T) {
-      createPredictionObjects(
-        species = species,
-        modelType = modelType,
-        makeNewGrid = makeNewGrid, # Change these to force a new grid or new prediction
-        makeNewPrediction = makeNewPrediction
-      )
-    } 
-    
-    # Load objects
-    load(fitName)
-    load(predictionObjectName)
-    load(gridFilename)
-  }
+## CREATE PREDICTION OBJECTS------------
+for (i in 1:length(modelTypes)) {
+  
+  # Set species and model
+  species = speciesList[i]
+  modelType = modelTypes[i]
+  
+  # Filenames
+  fitName = paste0("Results/", species, "/Models/", modelType, ".rdata")
+  predictionObjectName = paste0("Results/", species, "/Models/prediction_objects_", modelType, ".rdata")
+  gridFilename = paste0("Analysis/PredictionGrids/", species, "_grid.rdata")
+  
+  # Create prediction objects
+  if(!file.exists(predictionObjectName) | makeNewPrediction == T) {
+    createPredictionObjects(
+      species = species,
+      modelType = modelType,
+      makeNewGrid = makeNewGrid, # Change these to force a new grid or new prediction
+      makeNewPrediction = makeNewPrediction
+    )
+  } 
+  
+  # Load objects
+  load(fitName)
+  load(predictionObjectName)
+  load(gridFilename)
+}
 
-
+## INDIVIDUAL SPECIES ----------------------
 for (j in 1:length(modelTypes)) {
   
   # Set species and model
@@ -1140,10 +1265,14 @@ for (j in 1:length(modelTypes)) {
   # Get response variable
   response = strsplit(modelType, "_")[[1]][1]
   
-  # Predictive performance -----
+  ### Predictive performance -----
   predictivePerformance(fit, response, p.original)
   
-  # CT dataframes ------------
+  # visreg(fit, xvar = "sst_scaled")
+  # visreg(fit, xvar = "ssh_scaled")
+  # visreg(fit, xvar = "salinity_scaled")
+  
+  ## CT dataframes ------------
   # Summarize catch data by grid point, month, year, region, timeblock
   predictedCatch.grid <- p %>% group_by_at(., c("region", "gridid", "month", "year", "timeblock", "sst_roms", "latitude", "longitude","X", "Y", "salinity_roms", "ssh_roms")) %>%
     dplyr::summarize(., mean_est = mean(est_retransform)) %>% # summarize across grid cells
@@ -1201,110 +1330,86 @@ for (j in 1:length(modelTypes)) {
                 mean_ssh = mean(ssh_roms)
       )
   }
-  # calculate central tendency for each grid cell (month # * mean abundance in month)/(sum of mean abundances across all months)
-  centralTendency.grid <- group_by_at(predictedCatch.grid, c("gridid","latitude", "longitude", "X", "Y")) %>% 
-    summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
-  
-  # Calculate central tendency for each grid point per timeblock
-  centralTendency.grid.timeblock <- group_by_at(predictedCatch.grid, c("gridid","timeblock", "latitude", "longitude", "X", "Y")) %>% 
-    summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
-  
-  # Calculate central tendency for each grid point per year
-  centralTendency.grid.year <- group_by_at(predictedCatch.grid, c("gridid","year",  "latitude", "longitude", "X", "Y")) %>% 
-    summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
-  
-  # Calculate central tendency for each region per timeblock
-  centralTendency.region.timeblock <- group_by_at(predictedCatch.grid, c("region", "timeblock")) %>% 
-    summarize(mean_est_region = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
-  
-  # Calculate central tendency for each region per year
-  centralTendency.region.year <- group_by_at(predictedCatch.grid, c("region", "year")) %>% 
-    summarize(mean_est_region = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
-  
-  # Linear regressions -----
-  regressionResults <- regionlinearRegressions(species = species, formula = as.character(fit$formula))
-  grid.df <- pointlinearRegressions(species = species)
-  grid.df$days = grid.df$cog_slope*(365/12) # convert to days
-  write.xlsx(regressionResults, file = paste0("Results/", species, "/Regressions/", modelType, "_linearRegressionResults.xlsx"))
-  
-  # Frequency of sampling for species----
+  # ## calculate central tendency for each grid cell (month # * mean abundance in month)/(sum of mean abundances across all months)
+  # centralTendency.grid <- group_by_at(predictedCatch.grid, c("gridid","latitude", "longitude", "X", "Y")) %>% 
+  #   summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
+  # 
+  # ## Calculate central tendency for each grid point per timeblock
+  # centralTendency.grid.timeblock <- group_by_at(predictedCatch.grid, c("gridid","timeblock", "latitude", "longitude", "X", "Y")) %>% 
+  #   summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
+  # 
+  # ## Calculate central tendency for each grid point per year
+  # centralTendency.grid.year <- group_by_at(predictedCatch.grid, c("gridid","year",  "latitude", "longitude", "X", "Y")) %>% 
+  #   summarize(mean_est_grid = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
+  # 
+  # ## Calculate central tendency for each region per timeblock
+  # centralTendency.region.timeblock <- group_by_at(predictedCatch.grid, c("region", "timeblock")) %>% 
+  #   summarize(mean_est_region = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
+  # 
+  # ## Calculate central tendency for each region per year
+  # centralTendency.region.year <- group_by_at(predictedCatch.grid, c("region", "year")) %>% 
+  #   summarize(mean_est_region = mean(mean_est), centralTendency = sum(est_x_month)/sum(mean_est))
+  # 
+  ## Linear regressions -----
+  # regressionResults <- regionlinearRegressions(species = species, formula = as.character(fit$formula))
+  # grid.df <- pointlinearRegressions(species = species)
+  # grid.df$days = grid.df$cog_slope*(365/12) # convert to days
+  # write.xlsx(regressionResults, file = paste0("Results/", species, "/Regressions/", modelType, "_linearRegressionResults.xlsx"))
+  # 
+  ## Frequency of sampling for species----
   #frequencyOfSampling(speciesData = data)
   
-  # Env tracking figures----
+  ## Env tracking figures----
   #envTracking_figures(species = species, modelType = modelType)
   #envVariance_figures(species = species, modelType = modelType)
   
-  # Env posterior figures----
+  ## Env posterior figures----
   envPosterior()
   
-  # Effects figures -----
-  effectsFigures(species, modelType = modelType)
+  ## Effects figures -----
+  #effectsFigures(species, modelType = modelType)
   
-  # CT figures -------
-  centralTendency_figures(response = response, species = species, modelType = modelType)
+  ## CT figures -------
+  #centralTendency_figures(response = response, species = species, modelType = modelType)
   
-  # Empirical data ---------
-  empiricalCatch.timeblock <- data %>%
-    group_by_at(c("latitude", "longitude", "X", "Y", "year", "month", "timeblock")) %>%
-    summarize(logN1 = sum(logN1)) %>% # sum across the three gear types
-    ungroup() %>% group_by_at(c("X", "Y", "timeblock")) %>%
-    summarize(logN1 = mean(logN1))
-  empiricalData(response = response, species = species)
+  ## Empirical data ---------
+  # empiricalCatch.timeblock <- data %>%
+  #   group_by_at(c("latitude", "longitude", "X", "Y", "year", "month", "timeblock")) %>%
+  #   summarize(logN1 = sum(logN1)) %>% # sum across the three gear types
+  #   ungroup() %>% group_by_at(c("X", "Y", "timeblock")) %>%
+  #   summarize(logN1 = mean(logN1))
+  # empiricalData(response = response, species = species)
   
-  # Predicted catch or presence --------
-  predictedData(response = response, species = species, modelType = modelType)
+  ## Predicted catch or presence --------
+  #predictedData(response = response, species = species, modelType = modelType)
   
-  #Quotient curves----------
-  quotientCurves(species, modelType)
+  ## Quotient curves----------
+  #quotientCurves(species, modelType)
   
-  #Leading and trailing and chi squared -------
+  ## Leading and trailing and chi squared -------
   #leadingTrailing(species)
   
-  #Cumulative curves --------
+  ## Cumulative curves --------
   cumulativeCatch(species)
 }
 
+## MULTI-SPECIES PLOTS -----------------
+### Central tendency (multi-species plot) --------------
+lifeHistories = c("Coastal pelagic", "Mesopelagic", "Groundfish")
+for (i in 1:length(lifeHistories)) {
+  centralTendencyMultiSpecies(lifeHistory = lifeHistories[i])
+}
 
-# Central tendency (multi-species plot) --------------
-# Mixed taxonomic models
-speciesList = c("Engraulis mordax", "Sardinops sagax", "Sebastes jordani", "Citharichthys sordidus", "Glyptocephalus zachirus", "Merluccius productus", "Parophyrus vetulus", "Sebastes paucispinis", "Stenobrachius leucopsarus", "Tarletonbeania crenularis", "Triphoturus mexicanus", "Vinciguerria lucetia")
-modelTypes = c("logN1_speciesRange_allPrograms_both_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_geo_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_geo_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_both_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_base_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_both_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_base_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_both_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_both_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_base_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_both_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_geo_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)")
+### Niche breadth (multi-species plot) --------------
+nicheBreadthMultiSpecies(tradeoffs = tradeoffs, recalculate = F)
 
+### Tradeoffs bar plot ---------------------
+tradeoffsBarPlot(tradeoffs = tradeoffs)
 
-modelTypes = c("logN1_speciesRange_allPrograms_geo_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_base_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)",
-               "logN1_speciesRange_allPrograms_base_spice+sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)")
-
-centralTendencyMultiSpecies(speciesList, modelTypes)
-
-# Niche breadth (multi-species plot) --------------
-nicheBreadthMultiSpecies(speciesList, modelTypes = modelTypes)
-
-# Tradeoffs bar plot
-tradeoffs.summary <- tradeoffs %>%  
-  group_by_at(c("life_history", "model")) %>% 
-  summarize(n = sum(!is.na(chosen_model)))
-tradeoffs.summary$model <- factor(tradeoffs.summary$model, levels = c("base", "geo", "pheno", "both"))
-
-pdf(file = "Figures/Tradeoff_Summary.pdf", width = 6, height = 5)
-ggplot(tradeoffs.summary) +
-  geom_col(aes(x = Model, y = n, fill = Life.history)) +
-  labs(x = "Model", y = "N") +
-  theme_classic(base_size = 14) +
-  theme(legend.position = c(0.05,0.8), legend.justification = "left") +
-  scale_fill_manual("Life history", values = c("Groundfish" = "tan3", "Coastal pelagic" = "skyblue2", "Mesopelagic" = "navy"))
-dev.off()
+### Cumulative abundances
+# for (i in 1:nrow(tradeoffs)) {
+#   cumulativeCatch(species = tradeoffs$scientific_name[i])
+# }
 
 # Test for quadratic relationship between estimated abundance and environmental covariates
 mod <- mgcv::gam(fit$family$linkinv(p$est_retransform) ~ s(p$sst_roms, k = 3), method = "REML", family = gaussian())
@@ -1374,7 +1479,6 @@ ggplot(cog, aes(est_x, est_y, color = timeblock)) +
 # SANDBOX------------------------------------------------------------------------------------------
 # Plot smooother on variables in link space with randomized quantile partial residuals
 # Takes a few min to run. Requires mesh.
-fit <- geo
 
 visreg(fit, xvar = "sst_scaled")
 visreg(fit, xvar = "ssh_scaled")
