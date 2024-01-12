@@ -216,7 +216,8 @@ getPrerecruit <- function() {
            original_station = 'original station',
            original_transect = 'n/a transect') %>%
     mutate(., across(c("original_station", "line", "station"), as.character)) %>% 
-    mutate(., .after = gear, gearGeneral = "Bongo/Ring") 
+    mutate(., .after = gear, gearGeneral = "Bongo/Ring") %>% 
+    mutate(larvae_m3 = larvae_1000m3 / 1000)
 
   # JUVENILES --------------
   # Midwater trawl data
@@ -335,7 +336,8 @@ getCanada <- function() {
     mutate(., across(c(latitude, longitude, volume_sampled_m3, depth_strata, bottom_depth, depth_end1), as.numeric) , across(c(time), as.character)) %>% 
     mutate(., .before = larvae_m3, larvae_count = larvae_m3 * volume_sampled_m3) %>%
     mutate(., .before = 1, program = "Canada") %>% 
-    mutate(., .after = gear, gearGeneral = "Bongo/Ring")
+    mutate(., .after = gear, gearGeneral = "Bongo/Ring") %>% 
+    subset(., longitude > -140 & latitude > 45) # subset to tows within core area
   
 
   write.csv(x = canada, file = "Data/Canada.csv", row.names = FALSE)
@@ -368,37 +370,45 @@ getTows <- function(samples) {
     mutate(., .before = 1, program = "CalCOFI", across(c(percent_sorted, latitude, longitude), as.numeric)) %>%
     rename(gear = net_type) %>% 
     subset(., gear != "CV" & gear != "PV") %>% # Remove egg tow nets
-    mutate(.,  across(c("line", "station"), as.character), program = "CalCOFI", gearGeneral = ifelse(gear == "MT", yes = "Manta", no = "Bongo/Ring"))
+    mutate(.,  across(c("line", "station"), as.character), program = "CalCOFI", gearGeneral = ifelse(gear == "MT", yes = "Manta", no = "Bongo/Ring")) %>% 
+    mutate(., towID = paste(
+          program,
+          cruise,
+          date,
+          station,
+          gearGeneral,
+          tow_key,
+          sep = "_"))
   
   # rreas_tows <- group_by_at(rreas, c("program", "date", "station", "gear")) %>%
   #    summarize(., latitude = max(latitude), longitude = max(longitude), total_larvae = sum(larvae_count))
 
-  canada_tows <- read_xlsx("Data/OriginalDatasets/Canada.xlsx", sheet = "Station Headers")
-  colnames(canada_tows) = tolower(colnames(canada_tows))
-  canada_tows <- rename(canada_tows, latitude = lat, longitude = long) %>% 
-    rename(., bottom_depth = 'max_depth1', day_night = twilight, gear = net_type, depth_strata = depth_strt1) %>% 
-    separate_wider_position(., cols = key, widths = c(10, "tow_key" = 10), too_few =  "align_start" ) %>% 
-    mutate(., across(c(latitude, longitude, depth_strata, bottom_depth), as.numeric)) %>% 
-    mutate(., .before = 1, program = "Canada") %>% 
-    mutate(., .after = gear, gearGeneral = "Bongo/Ring")
+  # canada_tows <- read_xlsx("Data/OriginalDatasets/Canada.xlsx", sheet = "Station Headers")
+  # colnames(canada_tows) = tolower(colnames(canada_tows))
+  # canada_tows <- rename(canada_tows, latitude = lat, longitude = long) %>% 
+  #   rename(., bottom_depth = 'max_depth1', day_night = twilight, gear = net_type, depth_strata = depth_strt1) %>% 
+  #   separate_wider_position(., cols = key, widths = c(10, "tow_key" = 10), too_few =  "align_start" ) %>% 
+  #   mutate(., across(c(latitude, longitude, depth_strata, bottom_depth), as.numeric)) %>% 
+  #   mutate(., .before = 1, program = "Canada") %>% 
+  #   mutate(., .after = gear, gearGeneral = "Bongo/Ring")
+  # 
+  # canada_combined <- merge(canada_tows, canada[c("cruise", "tow_key", "latitude", "longitude", "day", "month", "year")], all = T) %>% 
+  #   mutate(., towID = paste(
+  #     program,
+  #     cruise,
+  #     date,
+  #     station,
+  #     gearGeneral,
+  #     tow_key,
+  #     sep = "_")) %>% 
+  #   distinct(., towID, .keep_all = T)
+  # 
+  # # For cruises without "line" or "tow_number" or "tow_key" columns, remove NAs in the towID
+  # canada_combined$towID = gsub(pattern = "_NA_", replacement = "_", x = canada_combined$towID)
+  # canada_combined$towID = gsub(pattern = "_NA", replacement = "", x = canada_combined$towID)
   
-  canada_combined <- merge(canada_tows, canada[c("cruise", "tow_key", "latitude", "longitude", "day", "month", "year")], all = T) %>% 
-    mutate(., towID = paste(
-      program,
-      cruise,
-      date,
-      station,
-      gearGeneral,
-      tow_key,
-      sep = "_")) %>% 
-    distinct(., towID, .keep_all = T)
-  
-  # For cruises without "line" or "tow_number" or "tow_key" columns, remove NAs in the towID
-  canada_combined$towID = gsub(pattern = "_NA_", replacement = "_", x = canada_combined$towID)
-  canada_combined$towID = gsub(pattern = "_NA", replacement = "", x = canada_combined$towID)
-  
-  all_tows <- subset(samples, program != "CalCOFI" & program != "Canada") %>% 
-    bind_rows(., canada_combined, calcofi_tows) %>% 
+  all_tows <- subset(samples, program != "CalCOFI") %>% 
+    bind_rows(., calcofi_tows) %>% 
     group_by_at(., c("towID", "program", "date", "latitude", "longitude", "year", "month", "day", "gear", "gearGeneral")) %>% 
     summarize(
       surface_temp_oC = mean(surface_temp_oC),
@@ -421,8 +431,8 @@ getTows <- function(samples) {
 # SELECT WITHIN EEZ --------------------------------------------------------------
 selectWithinEEZ <- function(data) {
   
-  # Load EEZ shapefile
-  eez <- read_sf("C://KDale/GIS/NorthAmerica_EEZ.shp") %>% st_buffer(., dist = 100000)
+  # Load EEZ shapefile, add an additional 100km buffer
+  eez <- read_sf("C://KDale/GIS/NorthAmerica_EEZ.shp")
   
   # Subset tows to within 200 km of land (EEZ)
   data_sf <- subset(data, !is.na(latitude)) %>% st_as_sf(., coords = c("longitude", "latitude"), remove = FALSE)
@@ -568,7 +578,7 @@ all_data <- bind_rows(list(imecocal, calcofi, rreas, prerecruit, nhline, canada,
 all_data$towID = gsub(pattern = "_NA_", replacement = "_", x = all_data$towID)
 all_data$towID = gsub(pattern = "_NA", replacement = "", x = all_data$towID)
 
-## Select positive samples within 300nm, remove Gulf of CA -----
+## Select positive samples within 200nm, remove Gulf of CA -----
 all_data_eez <- selectWithinEEZ(all_data) %>%
   st_difference(., gulfOfCalifornia) %>% 
   st_drop_geometry(.) %>% 
@@ -630,5 +640,38 @@ createMap(data = all_tows_roms)
 #   st_union(northAmerica)
 # write_sf(northAmerica, "C://KDale/GIS/NorthAmerica.shp")
 
-# SANDBOX --------------------------
+# SANDBOX ----------------------------------------------------------------------
+# Add latitudinal region
+all_tows_roms$region = 0
+for (i in 1:nrow(all_tows_roms)) {
+  latitude = all_tows_roms$latitude[i] 
+  
+  if(latitude < 34.5) {
+    all_tows_roms$region[i] = "Southern CCE"
+  } else if (latitude < 42 ) {
+    all_tows_roms$region[i] = "Central CCE"
+  } else if (latitude < 48.3) {
+    all_tows_roms$region[i] = "OR/WA"
+  } else if (latitude < 54.4) {
+    all_tows_roms$region[i] = "British Columbia"
+  } else {
+    all_tows_roms$region[i] = "Gulf of Alaska"
+  } 
+}
+
+all_tows_roms$region <- factor(all_tows_roms$region, levels = c("Southern CCE", "Central CCE", "OR/WA", "British Columbia", "Gulf of Alaska"))
+
+# Summarize number of tows across months and years
+summaryByMonth = all_tows_roms %>% subset(., program != "RREAS" & program != "PRS_juveniles") %>% 
+  subset(year >= 1995 & year <= 2018) %>% 
+  group_by_at(c("region", "month", "year")) %>% summarize(N = n())
+
+ggplot(summaryByMonth) +
+  geom_raster(mapping = aes(x = month, y = year, fill = N)) +
+  facet_grid(~ region) + 
+  scale_x_continuous(breaks = c(2,4,6,8,10,12)) +
+  theme_classic(base_size = 14) +
+  labs(y = "Year", x = "Month") +
+  scale_fill_gradient("Number\nof tows", low = "lightblue", high = "darkblue")
+
 

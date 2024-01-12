@@ -1,6 +1,7 @@
 # LOAD PACKAGES ---------------------------------------------------------------
 # Data management
 library(readxl)
+library(xlsx)
 library(tidyverse)
 library(dplyr)
 
@@ -127,23 +128,24 @@ modelChecks <- function(fit) {
 # RUN FUNCTIONS -----------------------------------------------------------------
 
 # Set species and models
-tradeoffs <- read_xlsx("Results/Tradeoffs.xlsx", sheet = 1) %>% subset(., chosen_model == "x")
-
-# Mixed taxonomic models
+tradeoffs <- read_xlsx("Results/Tradeoffs.xlsx", sheet = 1) %>% subset(., chosen_model == 1)
 speciesList = tradeoffs$scientific_name
 tradeoffsList = tradeoffs$model
 
+# Testing model convergence issues
+tradeoffs <- read.xlsx("Results/BestModels.xlsx", sheetIndex = 1)
+speciesList = tradeoffs$species
+tradeoffsList = rep("base", 14)
+ 
 # speciesList = c("Engraulis mordax")
-# tradeoffs = c("both")
+# tradeoffsList = c("base")
 
-dependentVar = "logN1"
-shortFormulas = tradeoffs$covariates
+dependentVar = "abundance_logN1_scaled"
+shortFormulas = tradeoffs$short_formula
 mainFormulas = tradeoffs$main_formula
-# shortFormula ="sst+ssh+salinity+bd+month"
-# mainFormula = "s(sst_scaled, k = 3) + s(ssh_scaled, k = 3) + s(salinity_scaled, k = 3) + s(bottom_depth_scaled, k = 3)"
 gearTerm = "as.factor(gearGeneral)"
  
-  for (i in 14:length(tradeoffsList)) {
+  for (i in 2:2) {
     
     species = speciesList[i]
     
@@ -154,7 +156,7 @@ gearTerm = "as.factor(gearGeneral)"
       mutate(year_scaled = scale(year), gear_factor = as.numeric(as.factor(gearGeneral)), timeblock_factor = as.numeric(timeblock)) 
     
     # Make mesh
-    mesh <- make_mesh(data, xy_cols = c("X",  "Y"), n_knots = 200, type= "cutoff_search")
+    mesh <- make_mesh(data, xy_cols = c("X",  "Y"), n_knots = 100, type= "cutoff_search")
     
     fit <- tradeoffModels(
       #formula = "logN1 ~ s(ssh_scaled) + s(sst_scaled) + s(salinity_scaled) + as.factor(gearGeneral) + s(month, bs = 'cc', k = 12)",

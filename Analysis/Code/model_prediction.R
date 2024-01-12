@@ -11,6 +11,7 @@ library(stringr)
 library(sdmTMB)
 library(ape)
 library(hutils)
+library(nppen)
 
 # Mapping
 library(sf)
@@ -62,18 +63,24 @@ frequencyOfSampling <- function(speciesData) {
 # CALCULATE COG  ------------------------------------------------------------
 calculateCenterOfGravity <- function(p, species) {
   
-  # Center of gravity per year in relation to environmental variables
+  # Create dataframe to store results
   years = unique(p$year)
   cog.year = data.frame(matrix(ncol = 0, nrow = length(years)), year = NA, cog.lat = NA, cog.month = NA, avgsst = NA, avgssh = NA, avgsal= NA, avgdfs = NA, avgspice = NA)
   
   for (i in 1:length(years)) {
     yearSubset = subset(p, year == years[i])
+    
+    # Calculate center of gravity for that year
     cog.year$cog.lat[i] = sum(yearSubset$est_retransform*yearSubset$latitude)/sum(yearSubset$est_retransform)
     cog.year$cog.month[i] = sum(yearSubset$est_retransform*yearSubset$month)/sum(yearSubset$est_retransform)
+    
+    # Include averages of environmental covariates
     cog.year$avgsst[i] = mean(yearSubset$sst_roms)
     cog.year$avgssh[i] = mean(yearSubset$ssh_roms)
     cog.year$avgsal[i] = mean(yearSubset$salinity_roms)
     cog.year$avgspice[i] = mean(yearSubset$spice)
+    
+    # Include year and species info
     cog.year$year[i] = years[i]
     cog.year$species[i] = species
   }
@@ -391,13 +398,13 @@ empiricalVsPredicted <- function(species, model) {
   northAmerica <- read_sf("C://KDale/GIS/North_South_America.shp") %>% st_union()
   
   # Plot scatterplot of empirical vs predicted data (only on original stations)
-    pdf(file = paste0("Figures/", species, "/Empirical_vs_predicted_", modelType, ".pdf"), width = 4, height = 3)
-    print(ggplot(p.original, aes(x = logN1, y = est_retransform)) +
-            geom_point(alpha = 0.5, pch = 16, size = 1, color = "gray40") +
-            geom_smooth(method = "lm", fill = "black", color = "black") +
-            coord_cartesian(expand = F, ylim = c(0,max(p.original$est_retransform)+0.1), xlim = c(0, max(p.original$logN1)+0.15)) +
-            geom_abline(slope = 1, intercept = 0, lty = 2, linewidth = 1, color = "black") +
-            labs(x = "Empirical abundance [log(N+1)]", y = "Predicted abundance [log(N+1)]"))
+  pdf(file = paste0("Figures/", species, "/Empirical_vs_predicted_", modelType, ".pdf"), width = 4, height = 3)
+  print(ggplot(p.original, aes(x = logN1, y = est_retransform)) +
+          geom_point(alpha = 0.5, pch = 16, size = 1, color = "gray40") +
+          geom_smooth(method = "lm", fill = "black", color = "black") +
+          coord_cartesian(expand = F, ylim = c(0,max(p.original$est_retransform)+0.1), xlim = c(0, max(p.original$logN1)+0.15)) +
+          geom_abline(slope = 1, intercept = 0, lty = 2, linewidth = 1, color = "black") +
+          labs(x = "Empirical abundance [log(N+1)]", y = "Predicted abundance [log(N+1)]"))
   dev.off()
   
   # Prediction on original stations (per timeblock)
@@ -414,7 +421,7 @@ empiricalVsPredicted <- function(species, model) {
           theme(axis.text.x = element_text(angle = 60,hjust=1)) +
           labs(x = "Longitude", y = "Latitude"))
   dev.off()
-
+  
   # Prediction on original stations (overall)
   
   # Get species dataset, cast to a spatial object
@@ -433,7 +440,7 @@ empiricalVsPredicted <- function(species, model) {
     st_make_valid() %>% 
     st_cast("POLYGON")
   
-# Predicted catch on original stations overall
+  # Predicted catch on original stations overall
   predictedCatch.grid.original <- p.original %>%
     st_as_sf(., coords = c("longitude", "latitude")) %>% 
     st_set_crs(st_crs(northAmerica))
@@ -459,19 +466,19 @@ empiricalVsPredicted <- function(species, model) {
     ggtitle("Empirical")
   
   p2 <- ggplot() +
-          # geom_point(data = subset(p.original, logN1 < 0.001), aes(X*1000, Y*1000), col = "gray80", size = 0.2, pch = 20, alpha = 0.5, inherit.aes = FALSE) +
-          # geom_point(data = subset(p.original, logN1 > 0.001), aes(X*1000, Y*1000, col = logN1), size = 1.5, alpha = 1, pch = 20, inherit.aes = FALSE) +
-          geom_sf(data = northAmerica, fill = "gray20") +
-          geom_sf(data = hex.predict, mapping = aes(fill = mean_est)) + 
-          scale_fill_gradient("Average abundance\n[log(N+1)]", na.value = "white", low = "lightgoldenrod2", high =  "firebrick4") +
-          xlim(min(data$longitude), max(data$longitude)) +
-          ylim(min(data$latitude), max(data$latitude)) +
-          theme(axis.text.x = element_text(angle = 60,hjust=1))+
-          theme_classic(base_size = 12) +
-          theme(axis.text.x = element_text(angle = 60,hjust=1)) +
-          labs(x = "Longitude", y = "Latitude") +
-          ggtitle("Predicted")
-
+    # geom_point(data = subset(p.original, logN1 < 0.001), aes(X*1000, Y*1000), col = "gray80", size = 0.2, pch = 20, alpha = 0.5, inherit.aes = FALSE) +
+    # geom_point(data = subset(p.original, logN1 > 0.001), aes(X*1000, Y*1000, col = logN1), size = 1.5, alpha = 1, pch = 20, inherit.aes = FALSE) +
+    geom_sf(data = northAmerica, fill = "gray20") +
+    geom_sf(data = hex.predict, mapping = aes(fill = mean_est)) + 
+    scale_fill_gradient("Average abundance\n[log(N+1)]", na.value = "white", low = "lightgoldenrod2", high =  "firebrick4") +
+    xlim(min(data$longitude), max(data$longitude)) +
+    ylim(min(data$latitude), max(data$latitude)) +
+    theme(axis.text.x = element_text(angle = 60,hjust=1))+
+    theme_classic(base_size = 12) +
+    theme(axis.text.x = element_text(angle = 60,hjust=1)) +
+    labs(x = "Longitude", y = "Latitude") +
+    ggtitle("Predicted")
+  
   jpeg(paste0("Figures/", species,"/", species, "Empirical_Predicted_OVerall.jpg"), width = 10, height = 5, units = "in", res = 500)
   print(cowplot::plot_grid(p1, p2, nrow = 1, align = "both"))
   dev.off()
@@ -879,25 +886,31 @@ nicheBreadthMultiSpecies <- function(tradeoffs, recalculate) {
   speciesList = tradeoffs$scientific_name
   fileNames = tradeoffs$file_name
   lifeHistories = tradeoffs$life_history
+  tradeoffList = tradeoffs$model
   
-  nicheBreadthCombined = NA
+  colnames = c("species", "smith.lower", "smith", "smith.upper", "lifeHistory", "model")
+  nicheBreadthCombined = data.frame(matrix(ncol = length(colnames), nrow = length(speciesList)))
+  colnames(nicheBreadthCombined) = colnames
   
   for (i in 1:length(speciesList)) {
     
-    # Load in niche breadth csv (or create new one)
-    file = paste0("Results/", speciesList[i], "/", speciesList[i], "_", fileNames[i],  "nicheBreadth.csv")
-    if(!file.exists(file) | recalculate == T) {
-      calculateNicheBreadth(species = speciesList[i], fileName = fileNames[i], lifeHistory = lifeHistories[i])
-    } 
-    nicheBreadth = read.csv(file)
+    # # Load in niche breadth csv (or create new one)
+    # file = paste0("Results/", speciesList[i], "/", speciesList[i], "_", fileNames[i],  "nicheBreadth.csv")
+    # if(!file.exists(file) | recalculate == T) {
+    #   calculateNicheBreadth(species = speciesList[i], fileName = fileNames[i], lifeHistory = lifeHistories[i])
+    # } 
+    # nicheBreadth = read.csv(file)
+    
+    # Hypervolume
+    hypervolume_results = calculateHypervolume(species = speciesList[i], fileName = fileNames[i])
     
     # Bind niche breadth datasets together
-    if (i == 1) {
-      nicheBreadthCombined = nicheBreadth
-    } else {
-      nicheBreadthCombined = bind_rows(nicheBreadthCombined, nicheBreadth)
-    }
-    
+    nicheBreadthCombined$species[i] = speciesList[i]
+    nicheBreadthCombined$smith.lower[i] = hypervolume_results[[1]]
+    nicheBreadthCombined$smith[i] = hypervolume_results[[2]]
+    nicheBreadthCombined$smith.upper[i] = hypervolume_results[[3]]
+    nicheBreadthCombined$lifeHistory[i] = lifeHistories[i]
+    nicheBreadthCombined$model[i] = tradeoffList[i]
   }
   
   lifeHistoryCategories = c("Coastal pelagic", "Mesopelagic", "Groundfish")
@@ -919,26 +932,49 @@ nicheBreadthMultiSpecies <- function(tradeoffs, recalculate) {
     }
     
     subset = subset(nicheBreadthCombined, lifeHistory == lifeHistoryChoice)
+    subset$model = factor(subset$model, levels = c("base", "geo", "pheno", "both"))
     
-    #pdf(paste0("Figures/Multispecies/", lifeHistoryChoice, "_NicheBreadth.pdf"), width = 4, height = 4)
-    plotlist[[i]] <- print(ggplot(subset) +
-            geom_point(aes(x = variableNames, y = smith, color = species), size = 3) +
-            geom_errorbar(aes(x = variableNames, ymin = smith.lower, ymax = smith.upper, color = species), width = 0.2, linewidth = 1.2) +
-            labs(x = "Environmental covariate", y = "Smith's measure") +
-            theme_classic(base_size = 16) +
-            theme(legend.position = "right", legend.justification = "left") +
-            scale_y_continuous(limits = c(0.4,1)) +
-            scale_color_manual(lifeHistoryCategories[i], values = multispeciesColors))
-    #dev.off()
-    
+    plotlist[[i]] <- print(ggplot(data = subset, mapping = aes(x = species, y = smith, ymin = smith.lower, ymax = smith.upper, color = model)) +
+                             geom_point(size = 3) +
+                             geom_linerange(linewidth = 1.2) +
+                             labs(x = "Species", y = "Smith's measure") +
+                             theme_classic(base_size = 16) +
+                             theme(legend.position = "right", legend.justification = "left")  +
+                             scale_color_manual(values = c("base" = "gray80", "geo" = "seagreen", "pheno" = "salmon", "both" = "black")))
+
   }
-  
   
   pdf(paste0("Figures/Multispecies/AllLifeHistories_NicheBreadth.pdf"), width = 27, height = 6)
   cowplot::plot_grid(plotlist = plotlist, nrow = 1)
   dev.off()
   
 }
+#--------------#
+calculateHypervolume <- function(species, fileName) {
+  
+  predictionObjectName = paste0("Results/", species, "/Models/prediction_objects_", fileName, ".rdata")
+  if(!file.exists(predictionObjectName)) {
+    createPredictionObjects(species = species, modelType = fileName, makeNewGrid = F, makeNewPrediction = T)
+  } 
+  
+  load(predictionObjectName)
+  
+  p_niche <- p %>% ungroup() %>% mutate(., sst_binned = cut(sst_roms, breaks = (max(p$sst_roms)-min(p$sst_roms))/1, dig.lab = 0, include.lowest = T)) %>% 
+    mutate(ssh_binned = cut(ssh_roms, breaks = (max(p$ssh_roms)-min(p$ssh_roms))/0.1, include.lowest = T, dig.lab = 1)) %>% 
+    mutate(salinity_binned = cut(salinity_roms, breaks = (max(p$salinity_roms)-min(p$salinity_roms))/0.2, dig.lab = 0, include.lowest = T)) %>% 
+    mutate(bottom_depth_binned = cut(bottom_depth, breaks = (max(p$bottom_depth)-min(p$bottom_depth))/100, dig.lab = 0, include.lowest = T)) %>%
+    group_by_at(c("month", "gridid", "sst_binned", "salinity_binned", "ssh_binned", "bottom_depth_binned")) %>%
+    summarize(sum_est = sum(est_retransform), n = n()) %>% 
+    ungroup() %>% mutate(est_prop = sum_est/sum(sum_est), n_prop = n/sum(n))
+  
+  hypervolume = sum(sqrt(p_niche$est_prop*p_niche$n_prop))
+  
+  hypervolume_upper = sin(asin(hypervolume)+1.96/(2*sqrt(sum(p_niche$sum_est))))
+  hypervolume_lower = sin(asin(hypervolume)-1.96/(2*sqrt(sum(p_niche$sum_est))))
+  
+  return(list(hypervolume_lower, hypervolume, hypervolume_upper))
+}
+
 
 # PLOT MAPS ----------------------------------------------------------------------------
 plot_map <- function(dat, column) {
@@ -1204,7 +1240,7 @@ theme_set(theme_classic(base_size = 12))
 timeblocks <- read_xlsx("Data/timeblocks.xlsx", sheet = 1)
 
 # Tradeoffs data file
-tradeoffs <- read_xlsx("Results/Tradeoffs.xlsx", sheet = 1) %>% subset(., chosen_model == "x")
+tradeoffs <- read_xlsx("Results/Tradeoffs.xlsx", sheet = 1) %>% subset(., chosen_model == 1)
 
 # Mixed taxonomic models
 speciesList = tradeoffs$scientific_name
