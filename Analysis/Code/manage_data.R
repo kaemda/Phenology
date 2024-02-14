@@ -39,8 +39,8 @@ gulfOfCalifornia <- st_read("C://KDale/GIS/World_Seas_IHO_v3/World_Seas_IHO_v3.s
 # ERDDAP function ---------------------------------------------------------------
 getERDDAP <- function(name) {
   
-  data <- tabledap(x = name, url = "https://coastwatch.pfeg.noaa.gov/erddap") %>% 
-    separate(., col = time, into = c("date", "time"), sep = c("T")) %>% 
+  data <- tabledap(x = name) %>% 
+    separate(., col = time, into = c("date", "time"), sep = c(" ")) %>% 
     mutate(., .after = "date", year = year(date), month = month(date), day = day(date))
   
   data$cruise <- as.character(data$cruise)
@@ -155,10 +155,9 @@ getrreas <- function() {
     # subset(species_group == "Clupeoid" | species_group == "Cottid" | species_group == "Deep-Sea Smelt" |
     #          species_group == "Fish" | species_group == "Flatfish" | species_group == "Myctophid" | species_group == "Other Groundfish"|
     #          species_group == "Rockfish" | species_group == "Salmonid" | species_group == "Smelt") %>% 
-    # mutate(., .before = 1, program = "RREAS") %>% 
     rename(., tow_number = haul_no, scientific_name = sci_name, larvae_count = catch) %>% 
     mutate(., across(c(latitude, longitude, bottom_depth), as.numeric) , across(c(station), as.character), day_night = "N") %>%   # all tows in RREAS occur at night
-    mutate(., gear = "Cobb MWT", gearGeneral = "Cobb MWT") # all sampling is via a cobb midwater trawl
+    mutate(., .before = 1, program = "RREAS", gear = "Cobb MWT", gearGeneral = "Cobb MWT") # all sampling is via a cobb midwater trawl
   
   # Environmental data
   rreas.env <- getERDDAP(name = "erdFedRockfishCtd") %>% 
@@ -377,7 +376,6 @@ getTows <- function(samples) {
           date,
           station,
           gearGeneral,
-          tow_key,
           sep = "_"))
   
   # rreas_tows <- group_by_at(rreas, c("program", "date", "station", "gear")) %>%
@@ -407,7 +405,7 @@ getTows <- function(samples) {
   # canada_combined$towID = gsub(pattern = "_NA_", replacement = "_", x = canada_combined$towID)
   # canada_combined$towID = gsub(pattern = "_NA", replacement = "", x = canada_combined$towID)
   
-  all_tows <- subset(samples, program != "CalCOFI") %>% 
+  all_tows <- subset(samples, program != "CalCOFI") %>% # CalCOFI tows are obtained through ERDDAP
     bind_rows(., calcofi_tows) %>% 
     group_by_at(., c("towID", "program", "date", "latitude", "longitude", "year", "month", "day", "gear", "gearGeneral")) %>% 
     summarize(

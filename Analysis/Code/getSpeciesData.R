@@ -1,26 +1,33 @@
+library(tidyr)
+library(readxl)
+
+setwd("C://KDale/Projects/Phenology/")
+all_tows_roms <- read.csv("Data/AllTows_200nm.csv") %>%
+  subset(., year >= 1995 & year <= 2019) 
+
 # GET SPECIES DATA -------------------------------------------------------------
 getspeciesData <- function(species, speciesRangeSubset, allgear = F) {
   
   speciesData <- read.csv(file = "Data/AllCruises_Combined_200nm.csv") %>%
     subset(scientific_name == species & year >= 1995 & year <= 2019) %>%
     mutate(., presence = 1) %>% 
-    mutate(., larvae_10m2_logN1 = log(larvae_10m2+1),
+    mutate(., larvae_10m2_logN1 = log(larvae_10m2+1), # log-transform each data type
            larvae_m3_logN1 = log(larvae_m3+1),
            larvae_1000m3_logN1 = log(larvae_1000m3+1),
            larvae_count_logN1 = log(larvae_count+1)) %>% 
-    mutate(., abundance_logN1_scaled = coalesce( 
+    mutate(., abundance_logN1_scaled = coalesce( # create coalesced scaled column of log transformed individual columns
       scale(larvae_10m2_logN1, center = F)[,1],
       scale(larvae_m3_logN1, center = F)[,1],
       scale(larvae_1000m3_logN1, center = F)[,1],
       scale(larvae_count_logN1, center = F)[,1]
     )) %>% 
-    mutate(., abundance_scaled = coalesce( 
+    mutate(., abundance_scaled = coalesce( # create coalesced scaled column of raw values
       scale(larvae_10m2, center = F)[,1],
       scale(larvae_m3, center = F)[,1],
       scale(larvae_1000m3, center = F)[,1],
       scale(larvae_count, center = F)[,1]
     )) %>% 
-    mutate(., abundance = coalesce( 
+    mutate(., abundance = coalesce(  # create coalesced column of raw values
       larvae_10m2,
       larvae_m3,
       larvae_1000m3,
@@ -48,7 +55,8 @@ getspeciesData <- function(species, speciesRangeSubset, allgear = F) {
     mutate(., logN1 = log(abundance_scaled+1))
   
   if (allgear == F) {
-    speciesData = subset(speciesData, gearGeneral != "MOCNESS" & gearGeneral != "Cobb MWT")
+    # subset to only programs that use rings, bongos, and mantas (i.e., larval sampling)
+    speciesData = subset(speciesData, gearGeneral == "Bongo/Ring" | gearGeneral == "Manta")
   } 
   
   if(speciesRangeSubset == "speciesRange") { # Subset to within area bounded by positive tows

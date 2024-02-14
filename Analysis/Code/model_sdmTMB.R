@@ -136,45 +136,48 @@ tradeoffsList = tradeoffs$model
 tradeoffs <- read.xlsx("Results/BestModels.xlsx", sheetIndex = 1)
 speciesList = tradeoffs$species
 tradeoffsList = rep("base", 14)
- 
-# speciesList = c("Engraulis mordax")
-# tradeoffsList = c("base")
 
 dependentVar = "abundance_logN1_scaled"
 shortFormulas = tradeoffs$short_formula
 mainFormulas = tradeoffs$main_formula
 gearTerm = "as.factor(gearGeneral)"
- 
-  for (i in 2:2) {
-    
-    species = speciesList[i]
-    
-    # Get species data
-    source("Analysis/Code/getSpeciesData.R")
-    speciesRange = "speciesRange"
-    data <- getspeciesData(species = species, speciesRangeSubset = speciesRange) %>% 
-      mutate(year_scaled = scale(year), gear_factor = as.numeric(as.factor(gearGeneral)), timeblock_factor = as.numeric(timeblock)) 
-    
-    # Make mesh
-    mesh <- make_mesh(data, xy_cols = c("X",  "Y"), n_knots = 100, type= "cutoff_search")
-    
-    fit <- tradeoffModels(
-      #formula = "logN1 ~ s(ssh_scaled) + s(sst_scaled) + s(salinity_scaled) + as.factor(gearGeneral) + s(month, bs = 'cc', k = 12)",
-      data = data,
-      mesh = mesh,
-      mainFormula = mainFormulas[i], 
-      shortFormula = shortFormulas[i],
-      species = species,
-      speciesRange = speciesRange,
-      varying = tradeoffsList[i],
-      programSubset = c("allPrograms"), # some combination of programs or "allPrograms" (default)
-      dependentVar = dependentVar, # "presence", "logN1", or "catch_anomaly_positive"
-      gearTerm = gearTerm) # "as.factor(gearGeneral)" or ""
-    
-    modelChecks(fit)
-    
-    fit %>% summary()
-  }
+
+# TESTING
+speciesList = c("Tarletonbeania crenularis")
+tradeoffsList = c("base")
+shortFormulas = "sst+ssh+salinity"
+mainFormulas = "s(sst_scaled, k = 3) + s(salinity_scaled, k = 3) + s(ssh_scaled, k = 3)"
+
+for (i in 1:length(speciesList)) {
+  
+  species = speciesList[i]
+  
+  # Get species data
+  source("Analysis/Code/getSpeciesData.R")
+  speciesRange = "speciesRange"
+  data <- getspeciesData(species = species, speciesRangeSubset = speciesRange) %>% 
+    mutate(year_scaled = scale(year), gear_factor = as.numeric(as.factor(gearGeneral)), timeblock_factor = as.numeric(timeblock)) 
+  
+  # Make mesh
+  mesh <- make_mesh(data, xy_cols = c("X",  "Y"), n_knots = 100, type= "cutoff_search")
+  
+  fit <- tradeoffModels(
+    #formula = "logN1 ~ s(ssh_scaled) + s(sst_scaled) + s(salinity_scaled) + as.factor(gearGeneral) + s(month, bs = 'cc', k = 12)",
+    data = data,
+    mesh = mesh,
+    mainFormula = mainFormulas[i], 
+    shortFormula = shortFormulas[i],
+    species = species,
+    speciesRange = speciesRange,
+    varying = tradeoffsList[i],
+    programSubset = c("allPrograms"), # some combination of programs or "allPrograms" (default)
+    dependentVar = dependentVar, # "presence", "logN1", or "catch_anomaly_positive"
+    gearTerm = gearTerm) # "as.factor(gearGeneral)" or ""
+  
+  modelChecks(fit)
+  
+  fit %>% summary()
+}
 
 #-----------------------------------------------------------------------------#
 # Reload model

@@ -3,7 +3,7 @@ library(dplyr)
 library(visreg)
 library(ggplot2)
 library(sf)
-library(leaflet)
+library(blockCV)
 
 # PLOT MAPS ----------------------------------------------------
 plot_map <- function(dat, column) {
@@ -13,15 +13,52 @@ plot_map <- function(dat, column) {
 }
 
 # make a mesh ------------------------------------------------
-mesh <- make_mesh(pcod, xy_cols = c("X", "Y"), cutoff = 10) # cutuoff = minimum allowed distance between points in units of x and y
+m <- make_mesh(pcod, xy_cols = c("X", "Y"), cutoff = 10) # cutuoff = minimum allowed distance between points in units of x and y
 
 #plot(mesh)
 
 # RUNNING BASIC MODELS ----------------------------------------
 # fit spatial model with smoother for depth
-fit <- sdmTMB(density ~ s(depth), data = pcod, mesh = mesh, family = tweedie(link = "log"), spatial = "on")
+fit <- sdmTMB(density ~ s(depth, k = 3), data = pcod, mesh = mesh, family = tweedie(link = "log"), spatial = "on")
 
 fit
+
+# Testing NaN error messages and singularity issues
+m <- sdmTMB(
+  data = pcod,
+  formula = density ~ s(depth_scaled, k = 3) + s(depth_scaled2, k = 3) + as.factor(year),
+  mesh = make_mesh(pcod, c("X", "Y"), cutoff = 10),
+  family = tweedie(link = "log"),
+  spatial = "on"
+)
+
+# Cross validation
+mesh <- make_mesh(pcod, c("X", "Y"), cutoff = 10)
+
+pcod.sf <- st_as_sf(pcod, coords = c("lon", "lat")) %>% 
+  st_set_crs(4326) %>% st_transform(5070)
+
+# Calculate appropriate block size
+sac.ln1 <- cv_spatial_autocor(x = pcod.sf,  column = "density", plot = T)
+blocksize <- sac.ln1$range * 2
+
+# Several ways of determining folds - spatial, buffer, nearest neighbor
+folds.spatial <- cv_spatial(x = pcod.sf, size = blocksize/1000, 
+                                      column = "density",
+                                      k = 5,
+                                      selection = "random",
+                                      iteration = 100)
+
+# Assign fold #s
+pcod$fold = folds.spatial$folds_ids
+
+m_cv <- sdmTMB_cv(
+  density ~ s(depth, k = 5) + as.factor(year),
+  data = pcod, mesh = mesh, fold_ids = "fold",
+  spatial = "on",
+  family = tweedie(link = "log"), 
+  k_folds = 5
+)
 
 # extract parameters as a dataframe
 # range: A derived parameter that defines the distance at which 2 points are effectively independent (actually about 13% correlated). If the share_range argument is changed to FALSE then the spatial and spatiotemporal ranges will be unique, otherwise the default is for both to share the same range.
@@ -49,7 +86,7 @@ ggplot(p, aes(X, Y, fill = exp(est))) +
   geom_raster() +
   scale_fill_viridis_c(trans = "sqrt")
 
-# presence absence model (probably most useful for us?)
+# presence absence model
 # use binomial distribution obviously
 # "present" is a column in the dataset
 fit <-
@@ -190,3 +227,31 @@ fit <- sdmTMB(density ~ 0 + s(depth, k = 5) + (1 | year_factor),
 fit
 tidy(fit, effects = "ran_pars", conf.int = TRUE)
 
+# MY DATA------------------------------------------------
+species = "Trachurus symmetricus"
+
+source("Analysis/Code/getSpeciesData.R")
+
+# Get species data
+data = getspeciesData(species, speciesRangeSubset = "speciesRange", allgear = F)
+data.sf <- st_as_sf(data, coords = c("longitude", "latitude")) %>% 
+  st_set_crs(4326) %>% st_transform(5070)
+data$year_scaled = scale(data$year)
+
+# Make mesh - very simple version
+mesh <- make_mesh(data, xy_cols = c("X",  "Y"), n_knots = 200, type= "cutoff_search")
+
+formula = as.formula(paste0("abundance_logN1_scaled ~ s(sst_scaled, k = 3) + s(ssh_scaled, k = 3) + s(salinity_scaled, k = 3) + s(bottom_depth_scaled, k = 3) + s(month, bs = 'cc', k = 12)"))
+
+fit <- sdmTMB(data = data,
+         # Different versions of this formula (different covariates, no month or gear term) all sometimes result in singularity issue
+         formula = formula,
+         mesh = mesh,
+         family = tweedie(link = "log"),
+         spatial = "on", # singularity issue occurs with both on and off
+         spatiotemporal = "off",
+         silent = F
+  )
+
+
+write.csv(data, file = "Data/Tarletonbeania_crenularis.csv")
