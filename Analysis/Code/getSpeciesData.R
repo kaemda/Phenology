@@ -1,37 +1,31 @@
+# LOAD PACKAGES ------------
 library(tidyr)
+library(dplyr)
 library(readxl)
+library(sf)
 
-setwd("C://KDale/Projects/Phenology/")
-all_tows_roms <- read.csv("Data/AllTows_200nm.csv") %>%
+# LOAD DATASETs ------------
+all_tows_roms <- read.csv("Data/AllTows_200nm_ROMS.csv") %>%
   subset(., year >= 1995 & year <= 2019) 
 
-# GET SPECIES DATA -------------------------------------------------------------
-getspeciesData <- function(species, speciesRangeSubset, allgear = F) {
+positiveTows = read.csv("Data/PositiveCatches_200nm_allColumns.csv")
+
+# GET SPECIES DATA -----------
+getspeciesData <- function(species, speciesRangeSubset = "speciesRange", allgear = F) {
   
-  speciesData <- read.csv(file = "Data/AllCruises_Combined_200nm.csv") %>%
+  # Extract positive tows first and center/scale larval data
+  speciesData <- positiveTows %>%
     subset(scientific_name == species & year >= 1995 & year <= 2019) %>%
     mutate(., presence = 1) %>% 
-    mutate(., larvae_10m2_logN1 = log(larvae_10m2+1), # log-transform each data type
-           larvae_m3_logN1 = log(larvae_m3+1),
-           larvae_1000m3_logN1 = log(larvae_1000m3+1),
-           larvae_count_logN1 = log(larvae_count+1)) %>% 
+    mutate(., larvae_10m2_logN1 = log(larvae_10m2+1), # Log(N+1) transform each data type
+           larvae_m3_logN1 = log(larvae_m3+1)) %>% 
     mutate(., abundance_logN1_scaled = coalesce( # create coalesced scaled column of log transformed individual columns
       scale(larvae_10m2_logN1, center = F)[,1],
-      scale(larvae_m3_logN1, center = F)[,1],
-      scale(larvae_1000m3_logN1, center = F)[,1],
-      scale(larvae_count_logN1, center = F)[,1]
-    )) %>% 
-    mutate(., abundance_scaled = coalesce( # create coalesced scaled column of raw values
-      scale(larvae_10m2, center = F)[,1],
-      scale(larvae_m3, center = F)[,1],
-      scale(larvae_1000m3, center = F)[,1],
-      scale(larvae_count, center = F)[,1]
+      scale(larvae_m3_logN1, center = F)[,1]
     )) %>% 
     mutate(., abundance = coalesce(  # create coalesced column of raw values
       larvae_10m2,
-      larvae_m3,
-      larvae_1000m3,
-      larvae_count
+      larvae_m3
     ))
   
   # Get maximum extents of positive tows
@@ -40,25 +34,23 @@ getspeciesData <- function(species, speciesRangeSubset, allgear = F) {
   maxLon = max(speciesData$longitude)
   minLon = min(speciesData$longitude)
   
-  # Merge with ROMS data
-  speciesData <- merge(all_tows_roms, speciesData[c("towID", "gear",  "scientific_name", "abundance","abundance_logN1_scaled", "abundance_scaled", "presence")], all.x = TRUE)
+  # Merge with tows dataset (includes zero tows and ROMS data)
+  speciesData <- merge(all_tows_roms, speciesData[c("towID", "scientific_name", "gear",  "abundance","abundance_logN1_scaled")], all.x = T)
   
-  # Replace all NA abundance values with zero (these are true zeroes)
-  speciesData <-  mutate(speciesData, presence = replace_na(presence, 0),
+  # Replace all "NA" abundance values with zero (these are the true zeroes)
+  speciesData <-  mutate(speciesData, 
                          abundance = replace_na(abundance, 0),
                          abundance_logN1_scaled = replace_na(abundance_logN1_scaled, 0),
-                         abundance_scaled = replace_na(abundance_scaled, 0),
                          scientific_name = species) %>% 
-    subset(., !is.na(sst_roms) & !is.na(ssh_roms) & !is.na(salinity_roms)& !is.na(gear)) %>% # Remove any tows without ROMS data
-    subset(., sst_roms != 0 & ssh_roms != 0 & salinity_roms != 0) %>%  # Remove any tows where ROMS has null values
-    mutate(., sst_scaled = scale(sst_roms)[,1], ssh_scaled = scale(ssh_roms)[,1], salinity_scaled = scale(salinity_roms)[,1], spice_scaled = scale(spice)[,1]) %>%  # Center and scale enviro data
-    mutate(., logN1 = log(abundance_scaled+1))
-  
-  if (allgear == F) {
-    # subset to only programs that use rings, bongos, and mantas (i.e., larval sampling)
-    speciesData = subset(speciesData, gearGeneral == "Bongo/Ring" | gearGeneral == "Manta")
-  } 
-  
+    subset(., !is.na(sst_roms) & !is.na(ssh_roms) & !is.na(salinity_roms)) %>% # Remove any tows without ROMS data
+    subset(bottom_depth < 0) %>% 
+    subset(., sst_roms > 1 & ssh_roms != 0 & salinity_roms != 0) %>%  # Remove any tows where ROMS has null values
+    mutate(., sst_scaled = scale(sst_roms)[,1],
+           ssh_scaled = scale(ssh_roms)[,1],
+           salinity_scaled = scale(salinity_roms)[,1],
+           spice_scaled = scale(spice_roms)[,1],
+           bottom_depth_scaled = scale(bottom_depth)[,1])  # Center and scale enviro data
+
   if(speciesRangeSubset == "speciesRange") { # Subset to within area bounded by positive tows
     speciesData <- subset(speciesData, latitude <= maxLat & latitude >= minLat & longitude >= minLon & longitude <= maxLon) 
   }
@@ -75,40 +67,15 @@ getspeciesData <- function(species, speciesRangeSubset, allgear = F) {
   speciesData <- merge(speciesData, timeblocks, by = "year")
   speciesData$timeblock = factor(speciesData$timeblock, levels = c("1995-1999", "2000-2004", "2005-2009", "2010-2014", "2015-2019"))
   
-  # Add latitudinal region
-  speciesData$region = 0
-  for (i in 1:nrow(speciesData)) {
-    latitude = speciesData$latitude[i] 
-    
-    if(latitude < 34.5) {
-      speciesData$region[i] = "Southern CCE"
-    } else if (latitude < 42 ) {
-      speciesData$region[i] = "Central CCE"
-    } else if (latitude < 48.3) {
-      speciesData$region[i] = "OR/WA"
-    } else if (latitude < 54.4) {
-      speciesData$region[i] = "British Columbia"
-    } else {
-      speciesData$region[i] = "Gulf of Alaska"
-    } 
-  }
-  
-  # Calculate top 10% and bottom 10% of range
-  maxLat = max(speciesData$latitude) 
-  minLat = min(speciesData$latitude)
-  latRange10pct = (maxLat - minLat) * 0.1
-  
-  # Subset data into three sections to add range percentile
-  upper10 = subset(speciesData, latitude >= (maxLat-latRange10pct)) %>% mutate(rangePercentile = "upper10")
-  lower10 = subset(speciesData, latitude <= (minLat+latRange10pct)) %>% mutate(rangePercentile = "lower10")
-  middle80 = subset(speciesData, latitude < (maxLat-latRange10pct) & latitude > (minLat+latRange10pct)) %>% mutate(rangePercentile = "middle80")
-  
-  # Rebind sections
-  speciesData <- rbind(upper10, lower10, middle80)
-  
-  # Order sections
-  speciesData$rangePercentile = factor(x = speciesData$rangePercentile, levels = c("upper10", "middle80", "lower10"))
-  speciesData$region <- factor(speciesData$region, levels = c("Southern CCE", "Central CCE", "OR/WA", "British Columbia", "Gulf of Alaska"))
+  # Add region
+  speciesData <- speciesData %>%
+    mutate(region = case_when(
+      latitude < 34.5 ~ "Southern CCE",
+      latitude < 42 ~ "Central CCE",
+      latitude < 48.3 & longitude > -141 ~ "OR/WA",
+      latitude < 54.4 ~ "British Columbia",
+      TRUE ~ "Gulf of Alaska"
+    ))
   
   return(speciesData)
 }

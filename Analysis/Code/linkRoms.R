@@ -1,14 +1,11 @@
 # Data management
-library(xlsx)
-library(readxl) 
 library(tidyr)
 library(dplyr)
 library(lubridate)
+library(terra)
 
 # Data access
 library(ncdf4)
-
-setwd("C://KDale/Projects/Phenology/")
 
 # ROMS -------------------------------------------------------------------------
 linkroms <- function(tows) {
@@ -21,76 +18,107 @@ linkroms <- function(tows) {
   sst=ncvar_get(roms, varid = "temp")
   ssh=ncvar_get(roms, varid = "zeta")
   salinity = ncvar_get(roms, varid = "salt")
+  
+  # Access spiciness dataset and average -- long runtime (access directly if already created)
   #spice = ncvar_get(spiciness, varid = "spice")
-  #spice = apply(spice, c(1,2,4), FUN=mean, na.rm=T) # average across depths
+  #spice = apply(spice, c(1,2,4), FUN=mean, na.rm=T) # average across depths (the third dimension of the array)
   #save(spice, file = "Data/Environment/Spiciness/spice.rdata")
   load(file = "Data/Environment/Spiciness/spice.rdata")
   
+  # Standardize time
   time=data.frame(date = as.Date(ncvar_get(roms, varid = "ocean_time")/86400, origin = '1900-01-01')) %>% 
     mutate(., year = year(date), month = month(date)) %>% 
     mutate(., year_month = paste(year,month, sep = "-"))
   
-  time.spice = data.frame(date = as.Date(ncvar_get(spiciness, varid = "time")/86400, origin = '1900-01-01')) %>% 
-    mutate(., year = year(date), month = month(date)) %>% 
-    mutate(., year_month = paste(year,month, sep = "-"))
-  
-  nc_close(roms) # Close the netCDF file
+  # Close the netCDF files
+  nc_close(roms) 
   nc_close(spiciness)
   
-  # Pre-compute year_month for tows
-  tows$year_month = paste(tows$year, tows$month, sep = "-")
+  # Compute year_month for tows
+  tows$year_month <- paste(tows$year, sprintf("%02d", tows$month), sep = "-")
+  time$year_month <- paste(time$year, sprintf("%02d", time$month), sep = "-")
+  tows$roms_time_index <- match(tows$year_month, time$year_month)
+  dateIndices <- unique(tows$roms_time_index)
   
-  # Initialize result columns
-  tows$sst_roms = 0
-  tows$ssh_roms = 0
-  tows$salinity_roms = 0
-  tows$spice = 0
+  # Remove any tows that fall outside of the dataset
+  tows = subset(tows, !is.na(tows$roms_time_index))
+  
+  covariates = c("sst_roms", "ssh_roms", "salinity_roms", "spice_roms")
+  
+  # Create storage dataset
+  tows_linked = NA
   
   # Set up progress bar
-  pb <- txtProgressBar(min = 0, max = nrow(tows), char = "=", style = 3)
+  pb <- txtProgressBar(min = 0, max = length(dateIndices), char = "=", style = 3)
   
-  for (i in 1:nrow(tows)) {
+  # Bilinear interpolation
+  for (i in 1:length(dateIndices)) {
+    # for (i in 1:100) {
     
-    # Cancel current iteration if year is out of range
-    if (tows$year[i] < min(time$year) | tows$year[i] > max(time$year))
-      next
+    # Get year/month index (corresponding to a "slice" of the ROMS matrix)
+    dateIndex <- dateIndices[i]
     
-    targetLat = tows$latitude[i]
-    targetLon = tows$longitude[i]
+    tows_subset = subset(tows, roms_time_index == dateIndex)
     
-    # Get the best date match (ROMS output is monthly)
-    dateIndex <- which(tows$year_month[i] == time$year_month)
+    # Create a raster from ROMS slice at that year/month combination
+    sst_slice <- sst[,,dateIndex]
+    ssh_slice <- ssh[,,dateIndex]
+    salinity_slice <- salinity[,,dateIndex]
+    spice_slice <- spice[,,dateIndex]
     
-    # Find all ROMS lat/lons within 0.5 deg of the sampling point
-    nearbyLatitudeIndices <- which(abs(latitude - targetLat) <= min(abs(latitude - targetLat) + 0.5))
-    nearbyLongitudeIndices <- which(abs(longitude - targetLon) <= min(abs(longitude - targetLon) + 0.5))
+    # Create vectors
+    lon_vec <- as.vector(t(longitude))
+    lat_vec <- as.vector(t(latitude))
+    sst_vec <- as.vector(t(sst_slice))
+    ssh_vec <- as.vector(t(ssh_slice))
+    salinity_vec <- as.vector(t(salinity_slice))
+    spice_vec <- as.vector(t(spice_slice))
     
-    # Find potential nearby points with valid latitude/longitudes
-    matchIndices <- which(nearbyLatitudeIndices %in% nearbyLongitudeIndices == TRUE)
+    # Build spatial data frame
+    grid_df <- data.frame(lon = lon_vec, lat = lat_vec, sst_roms = sst_vec, ssh_roms = ssh_vec, salinity_roms = salinity_vec, spice_roms = spice_vec)
     
-    # Calculate the best match (assumed to be the one with the closest latitude)
-    differences = latitude[nearbyLatitudeIndices[matchIndices]] - targetLat
-    bestMatch = matchIndices[which(abs(differences) == min(abs(differences)))]
+    # Convert to SpatVector, then rasterize
+    grid_pts <- terra::vect(grid_df, geom = c("lon", "lat"))
+    crs(grid_pts) = "EPSG:4326"
     
-    # Get the matching latitude
-    matchLat = latitude[nearbyLatitudeIndices[bestMatch]]
+    # Tow points vector
+    tow_pts <- vect(tows_subset[, c("longitude", "latitude")], 
+                    geom = c("longitude", "latitude"), 
+                    crs = "EPSG:4326")
     
-    # Get row/column info (necessary for accessing the matrices)
-    row = which(latitude == matchLat, arr.ind = TRUE)[1]
-    column = which(latitude == matchLat, arr.ind = TRUE)[2]
+    # Loop through covariates, calculating interpolated values at each tow point
     
-    # Extract sst, ssh, salinity, spiciness values
-    tows$sst_roms[i] = sst[row, column, dateIndex]
-    tows$ssh_roms[i] = ssh[row, column, dateIndex]
-    tows$salinity_roms[i] = salinity[row, column, dateIndex]
-    tows$spice[i] = spice[row, column, dateIndex]
+    
+    for (j in 1:length(covariates)) {
+      res_x <- mean(diff(longitude[,1])) # get resolution in x and y directions
+      res_y <- mean(diff(latitude[1,]))
+      rast <- terra::rasterize(grid_pts, terra::rast(ext=ext(grid_pts), resolution=c(res_x, res_y)), field=covariates[j])
+      crs(rast) = "EPSG:4326"
+      
+      # Extract interpolated values 
+      interp_vals <- terra::extract(rast, tow_pts, method = "bilinear")
+      
+      # Add results back to original tows (2nd column is the interpolated value)
+      if(nrow(tows_subset) == 1) {
+        tows_subset[covariates[j]] <- interp_vals[1,2]
+        
+      } else {
+        tows_subset[covariates[j]] <- interp_vals[, 2]
+      }
+    }
+    
+    # Bind into overall
+    if(i == 1) {
+      tows_linked = tows_subset
+    } else {
+      tows_linked = bind_rows(tows_linked, tows_subset)
+    }
     
     setTxtProgressBar(pb, i)
+    
   }
-  
   close(pb) # Close progress bar
   
-  # Return
-  return(tows)
+  return(tows_linked)
   
-}
+} 

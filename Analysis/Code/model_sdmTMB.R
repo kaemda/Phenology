@@ -17,73 +17,83 @@ library(future)
 library(sf)
 
 # Visualization
-library(visreg)
 library(ggplot2)
-library(RColorBrewer)
 
-setwd("C://KDale/Projects/Phenology/")
-
-all_tows_roms <- read.csv("Data/AllTows_200nm.csv") %>%
+all_tows_roms <- read.csv("Data/AllTows_200nm_ROMS.csv") %>%
   subset(., year >= 1995 & year <= 2019) %>% 
-  subset(gearGeneral == "Bongo/Ring" | gearGeneral == "Cobb MWT" | gearGeneral == "Manta")
+  subset(gear == "Bongo/Ring" | gear == "Manta")
 
-northAmerica <- read_sf("C://KDale/GIS/North_South_America.shp")
-northAmerica <- sf::st_transform(northAmerica, crs = 5070)
+northAmerica <- st_read("Data/Shapefiles/NorthAmerica/boundary_p_v2.shp") %>%
+  subset(COUNTRY != "water/agua/d'eau" & COUNTRY != "FN") %>% 
+  group_by(COUNTRY) %>% 
+  summarize(geometry = st_union(geometry)) %>% 
+  st_transform(5070)
+
+# ADD ERROR MESSAGES------------------------------------------------------
+addErrorMessages <- function(fit) {
+  
+  if("message" %in% colnames(fit)) {
+    fit$error = fit$message
+  } else {
+    fit$error = "None"
+  }
+  return(fit)
+}
 
 #TRADEOFF MODELS-----------------------------------------------------------------
-tradeoffModels <- function(formula = NA, mesh, mainFormula, data, shortFormula, species, speciesRange, varying, programSubset = "allPrograms", dependentVar, gearTerm) {
+tradeoffModels <- function(formula = NA, mesh, mainFormula, data, shortFormula, species, spatialTerm, speciesRange, modelType, dependentVar) {
   
-  if (varying == "pheno") {
+  if (modelType == "pheno") {
     # VARYING PHENOLOGY
-    formula = as.formula(paste0(dependentVar, "~", mainFormula, "+ s(month, bs = 'cc', k = 12, by = as.factor(timeblock)) +", gearTerm))
+    formula = as.formula(paste0(dependentVar, "~", mainFormula, "+ s(month, bs = 'cc', k = 12, by = as.factor(timeblock))"))
     
     fit <- sdmTMB(formula = formula,
                   data = data,
                   mesh = mesh,
                   family = tweedie(link = "log"),
-                  control = sdmTMBcontrol(nlminb_loops = 2),
-                  spatial = "on",
+                  control = sdmTMBcontrol(newton_loops = 2, nlminb_loops = 2),
+                  spatial = spatialTerm,
                   spatiotemporal = "off",
-                  silent = FALSE)
+                  silent = T)
     
-  } else if (varying == "geo") {
+  } else if (modelType == "geo") {
     # VARYING GEOGRAPHY
-    formula = as.formula(paste0(dependentVar, "~", mainFormula, "+ s(month, bs = 'cc', k = 12) +", gearTerm))
+    formula = as.formula(paste0(dependentVar, "~", mainFormula, "+ s(month, bs = 'cc', k = 12)"))
     
     fit <- sdmTMB(formula = formula,
                   data = data,
                   mesh = mesh,
                   family = tweedie(link = "log"),
-                  control = sdmTMBcontrol(nlminb_loops = 2),
+                  control = sdmTMBcontrol(newton_loops = 2, nlminb_loops = 2),
                   spatial = "on",
                   spatiotemporal = "iid",
                   time = "timeblock",
-                  silent = FALSE)
+                  silent = T)
     
-  } else if (varying == "both") {
+  } else if (modelType == "both") {
     # BOTH VARYING GEOGRAPHY AND VARYING PHENOLOGY
-    formula = as.formula(paste0(dependentVar, "~", mainFormula, "+ s(month, bs = 'cc', k = 12, by = as.factor(timeblock)) +", gearTerm))
+    formula = as.formula(paste0(dependentVar, "~", mainFormula, "+ s(month, bs = 'cc', k = 12, by = as.factor(timeblock))"))
     
     fit <- sdmTMB(formula = formula,
                   data = data,
                   mesh = mesh,
                   family = tweedie(link = "log"),
-                  control = sdmTMBcontrol(nlminb_loops = 2),
+                  control = sdmTMBcontrol(newton_loops = 2, nlminb_loops = 2),
                   spatial = "on",
                   spatiotemporal = "iid",
                   time = "timeblock",
-                  silent = FALSE)
+                  silent = T)
   } else {
     # BASE
-    formula = as.formula(paste0(dependentVar, "~", mainFormula, "+ s(month, bs = 'cc', k = 12) +", gearTerm))
+    formula = as.formula(paste0(dependentVar, "~", mainFormula, "+ s(month, bs = 'cc', k = 12)"))
     fit <- sdmTMB(formula = formula,
                   data = data,
                   mesh = mesh,
                   family = tweedie(link = "log"),
-                  control = sdmTMBcontrol(nlminb_loops = 2),
-                  spatial = "on",
+                  control = sdmTMBcontrol(newton_loops = 2, nlminb_loops = 2),
+                  spatial = spatialTerm,
                   spatiotemporal = "off",
-                  silent = FALSE)
+                  silent = T)
   }
   
   fit.estimates <- bind_rows(tidy(fit, effects = "ran_par", conf.int = TRUE) %>%
@@ -92,10 +102,8 @@ tradeoffModels <- function(formula = NA, mesh, mainFormula, data, shortFormula, 
                                filter(!grepl('year', term))) %>%
     mutate(term = factor(term))
   
-  # Save model fit and other data
-  programs <- paste(programSubset, collapse = "-")
-  save(fit, data, programs, speciesRange, mesh, file = paste0("Results/", species, "/Models/", dependentVar,"_", speciesRange, "_", programs, "_", varying, "_", shortFormula, "_", gearTerm, ".rdata"))
-  write.csv(x = fit.estimates, file = paste0("Results/",  species, "/", species, "_covariate_coefficients_", dependentVar,"_", speciesRange, "_", programs, "_", varying, "_", shortFormula, "_", gearTerm, ".csv"))
+  write.csv(x = fit.estimates, file = paste0("Results/",  species, "/", species, "_covariate_coefficients_", dependentVar,"_", speciesRange, "_", modelType, "_", shortFormula, ".csv"))
+  
   
   # Return model fit
   return(fit)
@@ -103,10 +111,10 @@ tradeoffModels <- function(formula = NA, mesh, mainFormula, data, shortFormula, 
 }
 
 # MODEL CHECKS -----------------------------------------------------------------
-modelChecks <- function(fit) {
+modelChecks <- function(fit, data) {
   
   # Basic sanity checks
-  sdmTMB::sanity(fit)
+  sanity <- sdmTMB::sanity(fit)
   
   # Randomized quantile residuals - quick check
   data$resids <- residuals(fit)
@@ -123,119 +131,85 @@ modelChecks <- function(fit) {
   # tweedie_p: Tweedie p (power) parameter; between 1 and 2.
   tidy(fit, effects = "ran_pars", conf.int = TRUE)
   
+  return(sanity)
+  
 }
 
 # RUN FUNCTIONS -----------------------------------------------------------------
+source("Analysis/Code/getSpeciesData.R")
+source("Analysis/Code/getMesh.R")
 
 # Set species and models
-tradeoffs <- read_xlsx("Results/Tradeoffs.xlsx", sheet = 1) %>% subset(., chosen_model == 1)
-speciesList = tradeoffs$scientific_name
-tradeoffsList = tradeoffs$model
+speciesLevels = read_xlsx("Data/Species_Info.xlsx", sheet = 1)$species
 
-# Testing model convergence issues
-tradeoffs <- read.xlsx("Results/BestModels.xlsx", sheetIndex = 1)
+covariates <- read_xlsx("Analysis/Covariates.xlsx", sheet = 1)
+tradeoffs <- read_xlsx("Results/02_Tradeoff Comparison/Tradeoffs_summary.xlsx", sheet = 1) %>% group_by_at(c("species", "main_formula")) %>%
+  filter(., delta_sum_loglik == min(delta_sum_loglik)) %>% 
+  merge(., covariates[c("main_formula", "short_formula")]) %>% 
+  mutate(species = factor(species, levels = speciesLevels)) %>% 
+  arrange(species)
+
+# SINGLE SPECIES
+# tradeoffs <- subset(tradeoffs, species == "Stenobrachius leucopsarus")
+
 speciesList = tradeoffs$species
-tradeoffsList = rep("base", 14)
+modelTypes = c("base", "pheno", "geo", "both")
 
 dependentVar = "abundance_logN1_scaled"
 shortFormulas = tradeoffs$short_formula
 mainFormulas = tradeoffs$main_formula
-gearTerm = "as.factor(gearGeneral)"
 
-# TESTING
-speciesList = c("Tarletonbeania crenularis")
-tradeoffsList = c("base")
-shortFormulas = "sst+ssh+salinity"
-mainFormulas = "s(sst_scaled, k = 3) + s(salinity_scaled, k = 3) + s(ssh_scaled, k = 3)"
+# Set up progress bar
+pb <- txtProgressBar(min = 0, max = nrow(tradeoffs), char = "=", style = 3)
 
-for (i in 1:length(speciesList)) {
+# Run sdmTMB models
+for (i in 1:nrow(tradeoffs)) {
   
-  species = speciesList[i]
+  species = as.character(speciesList[i])
+  print(species)
   
   # Get species data
-  source("Analysis/Code/getSpeciesData.R")
   speciesRange = "speciesRange"
   data <- getspeciesData(species = species, speciesRangeSubset = speciesRange) %>% 
-    mutate(year_scaled = scale(year), gear_factor = as.numeric(as.factor(gearGeneral)), timeblock_factor = as.numeric(timeblock)) 
+    mutate(year_scaled = scale(year), gear_factor = as.numeric(as.factor(gear)), timeblock_factor = as.numeric(timeblock)) 
+  
+  # Create spatial version
+  data.sf <- st_as_sf(data, coords = c("longitude", "latitude")) %>% 
+    st_set_crs(4326) %>% st_transform(5070)
   
   # Make mesh
-  mesh <- make_mesh(data, xy_cols = c("X",  "Y"), n_knots = 100, type= "cutoff_search")
+  mesh <- getMesh(data, data.sf)
   
-  fit <- tradeoffModels(
-    #formula = "logN1 ~ s(ssh_scaled) + s(sst_scaled) + s(salinity_scaled) + as.factor(gearGeneral) + s(month, bs = 'cc', k = 12)",
-    data = data,
-    mesh = mesh,
-    mainFormula = mainFormulas[i], 
-    shortFormula = shortFormulas[i],
-    species = species,
-    speciesRange = speciesRange,
-    varying = tradeoffsList[i],
-    programSubset = c("allPrograms"), # some combination of programs or "allPrograms" (default)
-    dependentVar = dependentVar, # "presence", "logN1", or "catch_anomaly_positive"
-    gearTerm = gearTerm) # "as.factor(gearGeneral)" or ""
-  
-  modelChecks(fit)
-  
-  fit %>% summary()
+  for (j in 1:length(modelTypes)) {
+
+    model = modelTypes[j]
+    
+    fit <- tryCatch({tradeoffModels(
+      #formula = "logN1 ~ s(ssh_scaled) + s(sst_scaled) + s(salinity_scaled) + as.factor(gear) + s(month, bs = 'cc', k = 12)",
+      data = data,
+      mesh = mesh,
+      mainFormula = mainFormulas[i], 
+      shortFormula = shortFormulas[i],
+      species = species,
+      speciesRange = speciesRange,
+      modelType = model,
+      spatialTerm = "on",
+      dependentVar = dependentVar)
+      
+    },  error = function(err) {
+      return(data.frame(aic = NA, converged = FALSE, error = err[1]))
+    })
+    
+    fit <- addErrorMessages(fit)
+    
+    # Save model fit and other data
+    save(fit, data, mesh, file = paste0("Results/", species, "/Models/", dependentVar,"_", speciesRange, "_", model, ".rdata"))
+    gc()
+    
+    setTxtProgressBar(pb, i)
+  }
 }
 
-#-----------------------------------------------------------------------------#
-# Reload model
-modelType = c("logN1_speciesRange_allPrograms_base_sst+ssh+salinity+dfs+bd+month_as.factor(gearGeneral)")
-load(file = paste0("Results/", species, "/Models/", modelType, ".rdata"))
+close(pb) # Close progress bar
 
-# Plot smooother on variables (include "scale = response" to plot on response scale)
-# Doesn't work on geo model (error about time column missing?)
-visreg(fit, xvar = "sst_scaled")
-visreg(fit, xvar = "ssh_scaled")
-visreg(fit, xvar = "salinity_scaled")
-visreg(fit, xvar = "month", scale = "response")
-
-# SANDBOX --------------------------------------------------------------------
-
-# Trying to match models that are in the original NSF proposal
-formula = as.formula(paste0("logN1 ~", mainFormula, "+ s(month, bs = 'cc', k = 12) +", gearTerm))
-
-fit <- sdmTMB(formula = "logN1 ~ s(ssh_scaled) + s(salinity_scaled) + s(bottom_depth_scaled) + s(month, bs = 'cc', k = 12, by = sst_scaled) + as.factor(gearGeneral)",
-              data = data,
-              mesh = mesh,
-              spatial_varying = ~ 0 + timeblock, time = "timeblock",
-              family = tweedie(link = "log"),
-              control = sdmTMBcontrol(nlminb_loops = 2, newton_loops = 1),
-              spatial = "on",
-              spatiotemporal = "off",
-              silent = FALSE)
-
-# ASSUMPTIONS -----------------------------------------------------------------
-# Test for normality
-
-## Test if a spatial model should be used (Moran's I) ----------
-inv_dists <- as.matrix(dist(speciesData[,c("X","Y")]))
-diag(inv_dists) <- 0
-Moran.I(speciesData$logN1, inv_dists)
-
-## Test for covariance
-glm <- glm(data = data, formula = logN1 ~ ssh_scaled + sst_scaled + salinity_scaled + bottom_depth_scaled + distance_from_shore_scaled)
-
-summary(glm)
-car::vif(glm)
-
-#create vector of VIF values
-vif_values <- car::vif(glm)
-
-#create horizontal bar chart to display each VIF value
-barplot(vif_values, main = "VIF Values", horiz = TRUE, col = "steelblue")
-abline(v = 5, lwd = 3, lty = 2)
-
-vars <- data[ , c("ssh_scaled", "sst_scaled", "salinity_scaled", "bottom_depth_scaled", "distance_from_shore_scaled")]
-
-#create correlation matrix
-cor(vars)
-
-## Latitude model --------
-gam.lat <- mgcv::gam(data = data.latModel, latitude ~ s(day_of_year_weighted) + as.factor(gearGeneral))
-summary(gam.lat)
-plot(gam.lat)
-p.gam = predict(gam.lat, newdata = data.latModel)
-plot(x = data.latModel$day_of_year, y = p.gam)
 
